@@ -46,6 +46,7 @@
 #include <boost/pool/pool.hpp>
 
 #include <vigra/error.hxx>
+#include <vigra/metaprogramming.hxx>
 #include <vigra/utilities.hxx>
 
 using std::cout;
@@ -53,6 +54,10 @@ using std::endl;
 using std::list;
 using std::map;
 using std::min;
+
+#ifdef _WIN32
+#define mktemp _mktemp
+#endif
 
 namespace vigra {
 
@@ -75,18 +80,19 @@ class CachedFileImageDirector {
 public:
 
     ~CachedFileImageDirector() {
-        // Make sure all image caches get destroyed and
-        // temp backing files get deleted.
-        if (!imageList.empty()) {
-            cout << endl << "Cleaning up temporary files." << endl;
-            while (!imageList.empty()) {
-                CachedFileImageBase const *image = imageList.front();
-                //cout << "deleting image " << image << endl;
-                // Remember that this delete call modifies imageList.
-                delete image;
-            }
-        }
-        delete pool;
+        // This is no longer necessary. temp files get unlinked on creation.
+        //// Make sure all image caches get destroyed and
+        //// temp backing files get deleted.
+        //if (!imageList.empty()) {
+        //    cout << endl << "Cleaning up temporary files." << endl;
+        //    while (!imageList.empty()) {
+        //        CachedFileImageBase const *image = imageList.front();
+        //        //cout << "deleting image " << image << endl;
+        //        // Remember that this delete call modifies imageList.
+        //        delete image;
+        //    }
+        //}
+        //delete pool;
     }
 
     // Obtain a reference to the singleton.
@@ -402,32 +408,32 @@ public:
         int width = d.i->width();
         int dy = n / width;
         int dx = n % width;
-        if (d.x + dx >= width) {dy++; dx -= width;}
-        else if (d.x + dx < 0) {dy--; dx += width;}
+        if (d.x() + dx >= width) {dy++; dx -= width;}
+        else if (d.x() + dx < 0) {dy--; dx += width;}
         return d(dx, dy);
     }
 
     static bool equal(BaseType const & d1, BaseType const & d2) {
         int width1 = d1.i->width();
         int width2 = d2.i->width();
-        return (d1.y*width1 + d1.x) == (d2.y*width2 + d2.x);
+        return (d1.y()*width1 + d1.x()) == (d2.y()*width2 + d2.x());
     }
 
     static bool less(BaseType const & d1, BaseType const & d2) {
         int width1 = d1.i->width();
         int width2 = d2.i->width();
-        return (d1.y*width1 + d1.x) < (d2.y*width2 + d2.x);
+        return (d1.y()*width1 + d1.x()) < (d2.y()*width2 + d2.x());
     }
 
     static difference_type difference(BaseType const & d1, BaseType const & d2) {
         int width1 = d1.i->width();
         int width2 = d2.i->width();
-        return (d1.y*width1 + d1.x) - (d2.y*width2 + d2.x);
+        return (d1.y()*width1 + d1.x()) - (d2.y()*width2 + d2.x());
     }
 
     static void increment(BaseType & d) {
         ++d.x;
-        if (d.x == d.i->width()) {
+        if (d.x() == d.i->width()) {
             d.x = 0;
             ++d.y;
         }
@@ -435,7 +441,7 @@ public:
 
     static void decrement(BaseType & d) {
         --d.x;
-        if (d.x < 0) {
+        if (d.x() < 0) {
             d.x = d.i->width() - 1;
             --d.y;
         }
@@ -447,19 +453,181 @@ public:
         int dx = n % width;
         d.x += dx;
         d.y += dy;
-        if (d.x >= width) {++d.y; d.x -= width;}
-        if (d.x < 0) {--d.y; d.x += width;}
+        if (d.x() >= width) {++d.y; d.x -= width;}
+        if (d.x() < 0) {--d.y; d.x += width;}
     }
 
 };
 
+namespace cfi_detail {
+
+template <class StridedOrUnstrided, class T>
+class DirectionSelector;
+
+template <class T>
+class DirectionSelector<UnstridedArrayTag, T>
+{
+public:
+    DirectionSelector(T base=0) : current_(base) {}
+    DirectionSelector(DirectionSelector const & rhs) : current_(rhs.current_) {}
+
+    DirectionSelector & operator=(DirectionSelector const & rhs) {
+        current_ = rhs.current_;
+        return *this;
+    }
+
+    void operator++() { ++current_; }
+    void operator++(int) { ++current_; }
+    void operator--() { --current_; }
+    void operator--(int) { --current_; }
+    void operator+=(int dx) { current_ += dx; }
+    void operator-=(int dx) { current_ -= dx; }
+
+    bool operator==(DirectionSelector const & rhs) const { return (current_ == rhs.current_); }
+    bool operator!=(DirectionSelector const & rhs) const { return (current_ != rhs.current_); }
+    bool operator<(DirectionSelector const & rhs) const { return (current_ < rhs.current_); }
+    bool operator<=(DirectionSelector const & rhs) const { return (current_ <= rhs.current_); }
+    bool operator>(DirectionSelector const & rhs) const { return (current_ > rhs.current_); }
+    bool operator>=(DirectionSelector const & rhs) const { return (current_ >= rhs.current_); }
+
+    int operator-(DirectionSelector const & rhs) const { return (current_ - rhs.current_); }
+
+    T operator()() const { return current_; }
+    T operator()(int d) const { return (current_ + d); }
+
+    T current_;
+};
+
+template <class T>
+class DirectionSelector<StridedArrayTag, T> {
+public:
+    DirectionSelector(int stride=1, T base=0) : stride_(stride), current_(base) {}
+    DirectionSelector(DirectionSelector const & rhs) : stride_(rhs.stride_), current_(rhs.current_) {}
+
+    DirectionSelector & operator=(DirectionSelector const & rhs) {
+        stride_ = rhs.stride_;
+        current_ = rhs.current_;
+        return *this;
+    }
+
+    void operator++() { current_ += stride_; }
+    void operator++(int) { current_ += stride_; }
+    void operator--() { current_ -= stride_; }
+    void operator--(int) { current_ -= stride_; }
+    void operator+=(int dy) { current_ += dy*stride_; }
+    void operator-=(int dy) { current_ -= dy*stride_; }
+
+    bool operator==(DirectionSelector const & rhs) const { return (current_ == rhs.current_); }
+    bool operator!=(DirectionSelector const & rhs) const { return (current_ != rhs.current_); }
+    bool operator<(DirectionSelector const & rhs) const { return (current_ < rhs.current_); }
+    bool operator<=(DirectionSelector const & rhs) const { return (current_ <= rhs.current_); }
+    bool operator>(DirectionSelector const & rhs) const { return (current_ > rhs.current_); }
+    bool operator>=(DirectionSelector const & rhs) const { return (current_ >= rhs.current_); }
+
+    int operator-(DirectionSelector const & rhs) const { return (current_ - rhs.current_) / stride_; }
+
+    T operator()() const { return current_; }
+    T operator()(int d) const { return current_ + d*stride_; }
+
+    int stride_;
+    T current_;
+};
+
+template <class StridedOrUnstrided, class T, class Notify>
+class NotifyingDirectionSelector;
+
+template <class T, class Notify>
+class NotifyingDirectionSelector<UnstridedArrayTag, T, Notify>
+{
+public:
+    NotifyingDirectionSelector(T base = 0) : current_(base), notify_(NULL) {}
+    NotifyingDirectionSelector(NotifyingDirectionSelector const & rhs) : current_(rhs.current_), notify_(NULL) {}
+
+    NotifyingDirectionSelector & operator=(NotifyingDirectionSelector const & rhs) {
+        current_ = rhs.current_;
+        notify_ = NULL;
+        return *this;
+    }
+
+    void setNotify(Notify *n) { notify_ = n; }
+
+    void operator++() { notify_->_notify(current_, current_+1); ++current_; }
+    void operator++(int) { notify_->_notify(current_, current_+1); ++current_; }
+    void operator--() { notify_->_notify(current_, current_-1); --current_; }
+    void operator--(int) { notify_->_notify(current_, current_-1); --current_; }
+    void operator+=(int dx) { notify_->_notify(current_, current_+dx); current_ += dx; }
+    void operator-=(int dx) { notify_->_notify(current_, current_-dx); current_ -= dx; }
+
+    bool operator==(NotifyingDirectionSelector const & rhs) const { return (current_ == rhs.current_); }
+    bool operator!=(NotifyingDirectionSelector const & rhs) const { return (current_ != rhs.current_); }
+    bool operator<(NotifyingDirectionSelector const & rhs) const { return (current_ < rhs.current_); }
+    bool operator<=(NotifyingDirectionSelector const & rhs) const { return (current_ <= rhs.current_); }
+    bool operator>(NotifyingDirectionSelector const & rhs) const { return (current_ > rhs.current_); }
+    bool operator>=(NotifyingDirectionSelector const & rhs) const { return (current_ >= rhs.current_); }
+
+    int operator-(NotifyingDirectionSelector const & rhs) const { return (current_ - rhs.current_); }
+
+    T operator()() const { return current_; }
+    T operator()(int d) const { return (current_ + d); }
+
+    T current_;
+
+private:
+    Notify *notify_;
+};
+
+template <class T, class Notify>
+class NotifyingDirectionSelector<StridedArrayTag, T, Notify> {
+public:
+    NotifyingDirectionSelector(int stride = 1, T base = 0) : stride_(stride), current_(base), notify_(NULL) {}
+    NotifyingDirectionSelector(NotifyingDirectionSelector const & rhs) : stride_(rhs.stride_), current_(rhs.current_), notify_(NULL) {}
+
+    NotifyingDirectionSelector & operator=(NotifyingDirectionSelector const & rhs) {
+        stride_ = rhs.stride_;
+        current_ = rhs.current_;
+        notify_ = NULL;
+        return *this;
+    }
+
+	void setNotify(Notify *n) { notify_ = n; }
+
+    void operator++() { notify_->_notify(current_, current_+stride_); current_ += stride_; }
+    void operator++(int) { notify_->_notify(current_, current_+stride_); current_ += stride_; }
+    void operator--() { notify_->_notify(current_, current_-stride_); current_ -= stride_; }
+    void operator--(int) { notify_->_notify(current_, current_-stride_); current_ -= stride_; }
+    void operator+=(int dy) { notify_->_notify(current_, current_+dy*stride_); current_ += dy*stride_; }
+    void operator-=(int dy) { notify_->_notify(current_, current_-dy*stride_); current_ -= dy*stride_; }
+
+    bool operator==(NotifyingDirectionSelector const & rhs) const { return (current_ == rhs.current_); }
+    bool operator!=(NotifyingDirectionSelector const & rhs) const { return (current_ != rhs.current_); }
+    bool operator<(NotifyingDirectionSelector const & rhs) const { return (current_ < rhs.current_); }
+    bool operator<=(NotifyingDirectionSelector const & rhs) const { return (current_ <= rhs.current_); }
+    bool operator>(NotifyingDirectionSelector const & rhs) const { return (current_ > rhs.current_); }
+    bool operator>=(NotifyingDirectionSelector const & rhs) const { return (current_ >= rhs.current_); }
+
+    int operator-(NotifyingDirectionSelector const & rhs) const { return (current_ - rhs.current_) / stride_; }
+
+    T operator()() const { return current_; }
+    T operator()(int d) const { return current_ + d*stride_; }
+
+    int stride_;
+    T current_;
+
+private:
+    Notify *notify_;
+
+};
+
+} // namespace cfi_detail
+
 /** Base class for CachedFileImage traversers. */
-template <class IMAGEITERATOR, class IMAGETYPE, class PIXELTYPE, class REFERENCE, class POINTER>
+template <class IMAGEITERATOR, class IMAGETYPE, class PIXELTYPE, class REFERENCE, class POINTER,
+          class StridedOrUnstrided=UnstridedArrayTag>
 class CachedFileImageIteratorBase
 {
 public:
     typedef CachedFileImageIteratorBase<IMAGEITERATOR,
-            IMAGETYPE, PIXELTYPE, REFERENCE, POINTER> self_type;
+            IMAGETYPE, PIXELTYPE, REFERENCE, POINTER, StridedOrUnstrided> self_type;
     typedef IMAGETYPE image_type;
     typedef PIXELTYPE value_type;
     typedef PIXELTYPE PixelType;
@@ -470,12 +638,14 @@ public:
     typedef image_traverser_tag iterator_category;
     typedef RowIterator<IMAGEITERATOR> row_iterator;
     typedef ColumnIterator<IMAGEITERATOR> column_iterator;
-    typedef int MoveX;
-    typedef int MoveY;
+    typedef typename cfi_detail::DirectionSelector<StridedOrUnstrided, int> MoveX;
+    friend class cfi_detail::DirectionSelector<StridedOrUnstrided, int>;
+    typedef typename cfi_detail::NotifyingDirectionSelector<StridedOrUnstrided, int, self_type> MoveY;
+    friend class cfi_detail::NotifyingDirectionSelector<StridedOrUnstrided, int, self_type>;
+    friend class CachedFileSequentialAccessIteratorPolicy<IMAGEITERATOR>;
 
     MoveX x;
     MoveY y;
-    image_type *i;
 
     IMAGEITERATOR & operator+=(difference_type const & s) {
         x += s.x;
@@ -514,27 +684,37 @@ public:
     }
 
     reference operator*() const {
-        return (*i)(x, y);
+        //std::cout << "iterator=" << this << " currentRow=" << (void*)currentRow << " modifying pixel at (" << x << "," << y._y << ")  = " << (void*)(&currentRow[x]) << std::endl;
+        return currentRow[x()];
+        //return (*i)(x, y);
     }
 
     // FIXME pointer is supposed to be a weak_ptr
     pointer operator->() const {
         //BOOST_STATIC_ASSERT(false);
-        return (*i)[y] + x;
+        return (*i)[y()] + x();
     }
 
     index_reference operator[](difference_type const & d) const {
-        return (*i)(x+d.x, y+d.y);
+        if (d.y == 0) {
+            return currentRow[x()+d.x];
+        } else {
+            return (*i)(x()+d.x, y()+d.y);
+        }
     }
 
     index_reference operator()(int dx, int dy) const {
-        return (*i)(x+dx, y+dy);
+        if (dy == 0) {
+            return currentRow[x()+dx];
+        } else {
+            return (*i)(x()+dx, y()+dy);
+        }
     }
 
     // FIXME pointer is supposed to be a weak_ptr
     pointer operator[](int dy) const {
         //BOOST_STATIC_ASSERT(false);
-        return (*i)[y + dy] + x;
+        return (*i)[y() + dy] + x();
     }
 
     row_iterator rowIterator() const {
@@ -547,12 +727,56 @@ public:
 
 protected:
 
-    CachedFileImageIteratorBase(const int X, const int Y, image_type * const I) : x(X), y(Y), i(I) { }
+    CachedFileImageIteratorBase(const int X, const int Y, image_type * const I) : x(X), y(Y), i(I), currentRow(NULL) {
+        y.setNotify(this);
+        _notify(y());
+    }
 
-    CachedFileImageIteratorBase() : x(0), y(0), i(NULL) { }
+    // Constructor only for strided iterators
+    CachedFileImageIteratorBase(const int X, const int Y, image_type * const I, int xstride, int ystride) : x(xstride, X), y(ystride, Y), i(I), currentRow(NULL) {
+        y.setNotify(this);
+        _notify(y());
+    }
+
+    CachedFileImageIteratorBase(const CachedFileImageIteratorBase &r) : x(r.x), y(r.y), i(r.i), currentRow(NULL) {
+        y.setNotify(this);
+        _notify(y());
+    }
+
+    CachedFileImageIteratorBase& operator=(const CachedFileImageIteratorBase &r) {
+        x = r.x;
+        y = r.y;
+        i = r.i;
+        currentRow = NULL;
+        y.setNotify(this);
+        _notify(y());
+        return *this;
+    }
+
+    void _notify(int initialY) {
+        // Y has been initialized to initialY.
+        if (i) currentRow = (*i)[initialY];
+        //std::cout << "iterator " << this << " _notify(" << initialY << ") currentRow=" << (void*)currentRow << std::endl;
+    }
+
+    void _notify(int oldY, int newY) {
+        // Y has changed from oldY to newY
+        if (i) currentRow = (*i)[newY];
+        //std::cout << "iterator " << this << " _notify(" << oldY << ", " << newY << ") currentRow=" << (void*)currentRow << std::endl;
+    }
+
+    image_type *i;
+    pointer currentRow;
 
 };
  
+/** Forward declarations */
+template <class PIXELTYPE>
+class StridedCachedFileImageIterator;
+
+template <class PIXELTYPE>
+class ConstStridedCachedFileImageIterator;
+
 /** Regular CachedFileImage traverser. */
 template <class PIXELTYPE>
 class CachedFileImageIterator
@@ -568,14 +792,14 @@ public:
             CachedFileImage<PIXELTYPE>,
             PIXELTYPE, PIXELTYPE &, PIXELTYPE *> Base;
 
-    CachedFileImageIterator(const int x, const int y, CachedFileImage<PIXELTYPE> * const i)
+    CachedFileImageIterator(const int x = 0,
+                            const int y = 0,
+                            CachedFileImage<PIXELTYPE> * const i = NULL)
     : Base(x, y, i)
     {}
 
-    CachedFileImageIterator()
-    : Base(0, 0, NULL)
-    {}
-
+    friend class StridedCachedFileImageIterator<PIXELTYPE>;
+    friend class ConstStridedCachedFileImageIterator<PIXELTYPE>;
 };
 
 /** Traverser over const CachedFileImage. */
@@ -594,26 +818,131 @@ public:
             PIXELTYPE, PIXELTYPE const &, PIXELTYPE const *> Base;
     // FIXME this needs to be a weak_ptr  ^^^^^^^^^^^^^^^^^
 
-    ConstCachedFileImageIterator(const int x, const int y, const CachedFileImage<PIXELTYPE> * const i)
+    ConstCachedFileImageIterator(const int x = 0,
+                                 const int y = 0,
+                                 const CachedFileImage<PIXELTYPE> * const i = NULL)
     : Base(x, y, i)
     {}
 
-    ConstCachedFileImageIterator(CachedFileImageIterator<PIXELTYPE> const & rhs)
-    : Base(rhs.x, rhs.y, rhs.i)
+    // FIXME functions to copy CachedFileImageIterator to ConstCachedFileImageIterator are broken
+
+    //ConstCachedFileImageIterator(CachedFileImageIterator<PIXELTYPE> const & rhs)
+    //: Base(0, 0, NULL)
+    //{
+    //    Base::x = rhs.x;
+    //    Base::y = rhs.y;
+    //    Base::i = rhs.i;
+    //    Base::currentRow = NULL;
+    //    Base::y.setNotify(this);
+    //    Base::_notify(Base::y());
+    //}
+
+    //ConstCachedFileImageIterator &
+    //operator=(CachedFileImageIterator<PIXELTYPE> const & rhs)
+    //{
+    //    Base::x = rhs.x;
+    //    Base::y = rhs.y;
+    //    Base::i = rhs.i;
+    //    Base::currentRow = NULL;
+    //    Base::y.setNotify(this);
+    //    Base::_notify(Base::y());
+    //    return *this;
+    //}
+
+    friend class ConstStridedCachedFileImageIterator<PIXELTYPE>;
+};
+
+/** Regular CachedFileImage traverser. */
+template <class PIXELTYPE>
+class StridedCachedFileImageIterator
+: public CachedFileImageIteratorBase<StridedCachedFileImageIterator<PIXELTYPE>,
+                CachedFileImage<PIXELTYPE>,
+                PIXELTYPE, PIXELTYPE &, PIXELTYPE *, StridedArrayTag>
+// FIXME this needs to be a weak_ptr    ^^^^^^^^^^^
+// in case someone uses the iterator to get a pointer to cached data.
+{
+public:
+
+    typedef CachedFileImageIteratorBase<StridedCachedFileImageIterator,
+            CachedFileImage<PIXELTYPE>,
+            PIXELTYPE, PIXELTYPE &, PIXELTYPE *, StridedArrayTag> Base;
+
+    StridedCachedFileImageIterator(const int x = 0,
+                                   const int y = 0,
+                                   CachedFileImage<PIXELTYPE> * const i = NULL,
+                                   const int xstride = 1,
+                                   const int ystride = 1)
+    : Base(x, y, i, xstride, ystride)
     {}
 
-    ConstCachedFileImageIterator()
-    : Base(0, 0, NULL)
+    StridedCachedFileImageIterator(CachedFileImageIterator<PIXELTYPE> const & r,
+                                   const int xstride,
+                                   const int ystride)
+    : Base(r.x(), r.y(), r.i, xstride, ystride)
     {}
 
-    ConstCachedFileImageIterator &
-    operator=(CachedFileImageIterator<PIXELTYPE> const & rhs)
-    {
-        Base::x = rhs.x;
-        Base::y = rhs.y;
-        Base::i = rhs.i;
-        return *this;
-    }
+};
+
+/** Traverser over const CachedFileImage. */
+template <class PIXELTYPE>
+class ConstStridedCachedFileImageIterator
+: public CachedFileImageIteratorBase<ConstStridedCachedFileImageIterator<PIXELTYPE>,
+                const CachedFileImage<PIXELTYPE>,
+                PIXELTYPE, PIXELTYPE const &, PIXELTYPE const *, StridedArrayTag>
+// FIXME this needs to be a weak_ptr          ^^^^^^^^^^^^^^^^^
+// in case someone uses the iterator to get a pointer to cached data.
+{
+public:
+
+    typedef CachedFileImageIteratorBase<ConstStridedCachedFileImageIterator,
+            const CachedFileImage<PIXELTYPE>,
+            PIXELTYPE, PIXELTYPE const &, PIXELTYPE const *, StridedArrayTag> Base;
+    // FIXME this needs to be a weak_ptr  ^^^^^^^^^^^^^^^^^
+
+    ConstStridedCachedFileImageIterator(const int x = 0,
+                                        const int y = 0,
+                                        const CachedFileImage<PIXELTYPE> * const i = NULL,
+                                        const int xstride = 1,
+                                        const int ystride = 1)
+    : Base(x, y, i, xstride, ystride)
+    {}
+
+    ConstStridedCachedFileImageIterator(ConstCachedFileImageIterator<PIXELTYPE> const & r,
+                                        const int xstride,
+                                        const int ystride)
+    : Base(r.x(), r.y(), r.i, xstride, ystride)
+    {}
+
+    ConstStridedCachedFileImageIterator(CachedFileImageIterator<PIXELTYPE> const & r,
+                                        const int xstride,
+                                        const int ystride)
+    : Base(r.x(), r.y(), r.i, xstride, ystride)
+    {}
+
+    // FIXME functions to copy StridedCachedFileImageIterator to ConstStridedCachedFileImageIterator are broken
+
+    //ConstStridedCachedFileImageIterator(StridedCachedFileImageIterator<PIXELTYPE> const & rhs)
+    //: Base(0, 0, NULL, 1, 1)
+    //{
+    //    Base::x = rhs.x;
+    //    Base::y = rhs.y;
+    //    Base::i = rhs.i;
+    //    Base::currentRow = NULL;
+    //    Base::y.setNotify(this);
+    //    Base::_notify(Base::y());
+    //}
+
+    //ConstStridedCachedFileImageIterator &
+    //operator=(StridedCachedFileImageIterator<PIXELTYPE> const & rhs)
+    //{
+    //    Base::x = rhs.x;
+    //    Base::y = rhs.y;
+    //    Base::i = rhs.i;
+    //    Base::currentRow = NULL;
+    //    Base::y.setNotify(this);
+    //    Base::_notify(Base::y());
+    //    return *this;
+    //}
 
 };
 
@@ -653,12 +982,12 @@ public:
         resize(width, height, value_type());
     }
 
-    explicit CachedFileImage(difference_type const & size) {
+    explicit CachedFileImage(difference_type const & size, value_type const & d = value_type()) {
         vigra_precondition((size.x >= 0) && (size.y >= 0),
                 "CachedFileImage::CachedIfelImage(Diff2D size): "
                 "size.x and size.y must be >= 0.\n");
         initMembers();
-        resize(size.x, size.y, value_type());
+        resize(size.x, size.y, d);
     }
 
     CachedFileImage(int width, int height, value_type const & d) {
@@ -729,59 +1058,71 @@ public:
     // FIXME - needs to return a weak_ptr
     pointer operator[](int dy) {
         //BOOST_STATIC_ASSERT(false);
-        return getLinePointerDirty(dy);
+        //cout << "fetching line pointer for row " << dy << endl;
+        if (dy < 0 || dy >= height_) return NULL;
+        else return getLinePointerDirty(dy);
     }
 
     // FIXME - needs to return a weak_ptr
     const_pointer operator[](int dy) const {
         //BOOST_STATIC_ASSERT(false);
-        return getLinePointer(dy);
+        //cout << "fetching line pointer for row " << dy << endl;
+        if (dy < 0 || dy >= height_) return NULL;
+        else return getLinePointer(dy);
     }
 
     traverser upperLeft() {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::upperLeft(): image must have non-zero size.");
         return traverser(0, 0, this);
     }
 
     traverser lowerRight() {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::lowerRight(): image must have non-zero size.");
         return traverser(width_, height_, this);
     }
 
     const_traverser upperLeft() const {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::upperLeft(): image must have non-zero size.");
         return const_traverser(0, 0, this);
     }
 
     const_traverser lowerRight() const {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::lowerRight(): image must have non-zero size.");
         return const_traverser(width_, height_, this);
     }
 
     iterator begin() {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::begin(): image must have non-zero size.");
         return iterator(traverser(0, 0, this));
     }
 
     iterator end() {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::end(): image must have non-zero size.");
         return iterator(traverser(0, height_, this));
     }
 
     const_iterator begin() const {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::begin(): image must have non-zero size.");
         return const_iterator(const_traverser(0, 0, this));
     }
 
     const_iterator end() const {
-        vigra_precondition(width_ > 0 && height_ > 0,
+        //vigra_precondition(width_ > 0 && height_ > 0,
+        vigra_assert(width_ > 0 && height_ > 0,
                 "CachedFileImage::end(): image must have non-zero size.");
         return const_iterator(const_traverser(0, height_, this));
     }
@@ -936,12 +1277,14 @@ void CachedFileImage<PIXELTYPE>::deallocate() {
 #ifdef _WIN32
     if (hTempFile_ != INVALID_HANDLE_VALUE) {
         CloseHandle(hTempFile_);
+    }
 #else
     if (tmpFile_ != NULL) {
         fclose(tmpFile_);
-#endif
-        unlink(tmpFilename_);
     }
+#endif
+    //    unlink(tmpFilename_);
+    //}
     delete[] tmpFilename_;
 };
 
@@ -1136,12 +1479,28 @@ PIXELTYPE * CachedFileImage<PIXELTYPE>::getLinePointerCacheMiss(const int dy) co
                           sizeof(PIXELTYPE) * pixelsToRead, 
                           &bytesRead, 
                           NULL)) {
-#else
-        int itemsRead = fread(blockStart, sizeof(PIXELTYPE), pixelsToRead, tmpFile_);
-        if (itemsRead < pixelsToRead) {
-#endif
+            DWORD dwError = GetLastError();
+            LPVOID lpMsgBuf;
+            FormatMessage(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+                    NULL,
+                    dwError,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                    (LPTSTR) &lpMsgBuf,
+                    0,
+                    NULL);
+            cerr << endl << lpMsgBuf << endl;
+            LocalFree(lpMsgBuf);
             vigra_fail("enblend: error reading from image swap file.\n");
         }
+#else
+        clearerr(tmpFile_);
+        int itemsRead = fread(blockStart, sizeof(PIXELTYPE), pixelsToRead, tmpFile_);
+        if (itemsRead < pixelsToRead) {
+            perror("enblend");
+            vigra_fail("enblend: error reading from image swap file.\n");
+        }
+#endif
     }
     else {
         // File does not have data for this block.
@@ -1203,15 +1562,16 @@ void CachedFileImage<PIXELTYPE>::swapOutBlock() const {
 
     // Choose a block to swap out.
     int blockNumber = 0;
-    if (blocksAllocated_ == 1 && blocksNeeded_ > 1) {
-        // Never swap out our only block (if we need more than one).
-        // Enblend iterates over images in 5-line sliding windows (in reduce).
-        // This is to avoid thrashing.
-        vigra_fail("enblend: Out of memory blocks. Try using the -m flag to "
-                "increase the amount of memory to use, or use the -b flag to "
-                "decrease the block size\n"
-                "reason: probable thrash, 1 blocks allocated, 0 blocks available.");
-    } else {
+    // This is non longer necessary with SKIPSM-based reduce.
+    //if (blocksAllocated_ == 1 && blocksNeeded_ > 1) {
+    //    // Never swap out our only block (if we need more than one).
+    //    // Enblend iterates over images in 5-line sliding windows (in reduce).
+    //    // This is to avoid thrashing.
+    //    vigra_fail("enblend: Out of memory blocks. Try using the -m flag to "
+    //            "increase the amount of memory to use, or use the -b flag to "
+    //            "decrease the block size\n"
+    //            "reason: probable thrash, 1 blocks allocated, 0 blocks available.");
+    //} else {
         if (mostRecentlyLoadedBlockIterator_ == blocksInMemory_->begin()) {
             // We're at the beginning of the image.
             // The last block in memory is the one least likely to be used next.
@@ -1226,9 +1586,9 @@ void CachedFileImage<PIXELTYPE>::swapOutBlock() const {
             blockNumber = *candidate;
             blocksInMemory_->erase(candidate);
         }
-    }
+    //}
 
-    //cout << "swapOutBlock after list remove block=" << blockNumber << ": ";
+    //cout << "swapOutBlock image=" << this << " after list remove block=" << blockNumber << ": ";
     //std::copy(blocksInMemory_->begin(), blocksInMemory_->end(),
     //        std::ostream_iterator<int>(cout, " "));
     //cout << endl;
@@ -1293,12 +1653,28 @@ void CachedFileImage<PIXELTYPE>::swapOutBlock() const {
                            sizeof(PIXELTYPE) * pixelsToWrite, 
                            &bytesWritten, 
                            NULL)) {
-#else
-        int itemsWritten = fwrite(blockStart, sizeof(PIXELTYPE), pixelsToWrite, tmpFile_);
-        if (itemsWritten < pixelsToWrite) {
-#endif
+            DWORD dwError = GetLastError();
+            LPVOID lpMsgBuf;
+            FormatMessage(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+                    NULL,
+                    dwError,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                    (LPTSTR) &lpMsgBuf,
+                    0,
+                    NULL);
+            cerr << endl << lpMsgBuf << endl;
+            LocalFree(lpMsgBuf);
             vigra_fail("enblend: error writing to image swap file.\n");
         }
+#else
+        clearerr(tmpFile_);
+        int itemsWritten = fwrite(blockStart, sizeof(PIXELTYPE), pixelsToWrite, tmpFile_);
+        if (itemsWritten < pixelsToWrite) {
+            perror("enblend");
+            vigra_fail("enblend: error writing to image swap file.\n");
+        }
+#endif
     }
 
     // Deallocate lines in block.
@@ -1320,9 +1696,9 @@ void CachedFileImage<PIXELTYPE>::swapOutBlock() const {
 
     blocksAllocated_--;
 
-    //cout << "swapOutBlock after swapout:"
+    //cout << "swapOutBlock image=" << this << " after swapout:"
     //     << " blocksAllocated=" << blocksAllocated_
-    //     << " blocksInMemory="
+    //     << " blocksInMemory=";
     //std::copy(blocksInMemory_->begin(), blocksInMemory_->end(),
     //        std::ostream_iterator<int>(cout, " "));
     //cout << endl;
@@ -1332,6 +1708,11 @@ void CachedFileImage<PIXELTYPE>::swapOutBlock() const {
 template <class PIXELTYPE>
 void CachedFileImage<PIXELTYPE>::initTmpfile() const {
     char filenameTemplate[] = ".enblend_tmpXXXXXX";
+
+#ifndef _WIN32
+    sigset_t oldsigmask;
+    sigprocmask(SIG_BLOCK, &SigintMask, &oldsigmask);
+#endif
 
 #if defined(_WIN32) && defined(HAVE_MKSTEMP)
 #error "Win32 has mkstemp?"
@@ -1369,9 +1750,14 @@ void CachedFileImage<PIXELTYPE>::initTmpfile() const {
         vigra_fail(strerror(errno));
     }
 
-    int filenameTemplateLength = strlen(filenameTemplate) + 1;
+    unsigned int filenameTemplateLength = (unsigned int)strlen(filenameTemplate) + 1;
     tmpFilename_ = new char[filenameTemplateLength];
     strncpy(tmpFilename_, filenameTemplate, filenameTemplateLength);
+
+#ifndef _WIN32
+    unlink(tmpFilename_);
+    sigprocmask(SIG_SETMASK, &oldsigmask, NULL);
+#endif
 
     // This doesn't seem to help.
     //if (setvbuf(tmpFile_, NULL, _IONBF, 0) != 0) {
@@ -1593,6 +1979,96 @@ maskImage(CachedFileImage<PixelType> const & img)
                 typename CachedFileImage<PixelType>::ConstAccessor>(img.upperLeft(), 
                                                                img.accessor());
 }
+
+template <class PixelType>
+inline pair< ConstStridedCachedFileImageIterator<PixelType>,
+             typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor>
+maskStrideIter(CachedFileImageIterator<PixelType> const & upperLeft, int xstride, int ystride)
+{
+    return pair< ConstStridedCachedFileImageIterator<PixelType>,
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor >
+                (ConstStridedCachedFileImageIterator<PixelType>(upperLeft, xstride, ystride),
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor());
+}
+
+template <class PixelType>
+inline pair< ConstStridedCachedFileImageIterator<PixelType>,
+             typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor>
+maskStrideIter(ConstCachedFileImageIterator<PixelType> const & upperLeft, int xstride, int ystride)
+{
+    return pair< ConstStridedCachedFileImageIterator<PixelType>,
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor >
+                (ConstStridedCachedFileImageIterator<PixelType>(upperLeft, xstride, ystride),
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor());
+}
+
+template <class PixelType>
+inline triple< ConstStridedCachedFileImageIterator<PixelType>,
+             ConstStridedCachedFileImageIterator<PixelType>,
+             typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor>
+maskStrideIterRange(CachedFileImageIterator<PixelType> const & upperLeft,
+                    CachedFileImageIterator<PixelType> const & lowerRight,
+                    int xstride, int ystride)
+{
+    return triple< ConstStridedCachedFileImageIterator<PixelType>,
+                ConstStridedCachedFileImageIterator<PixelType>,
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor >
+                (ConstStridedCachedFileImageIterator<PixelType>(upperLeft, xstride, ystride),
+                ConstStridedCachedFileImageIterator<PixelType>(lowerRight, xstride, ystride),
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor());
+}
+
+template <class PixelType>
+inline triple< ConstStridedCachedFileImageIterator<PixelType>,
+             ConstStridedCachedFileImageIterator<PixelType>,
+             typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor>
+maskStrideIterRange(ConstCachedFileImageIterator<PixelType> const & upperLeft,
+                    ConstCachedFileImageIterator<PixelType> const & lowerRight,
+                    int xstride, int ystride)
+{
+    return triple< ConstStridedCachedFileImageIterator<PixelType>,
+                ConstStridedCachedFileImageIterator<PixelType>,
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor >
+                (ConstStridedCachedFileImageIterator<PixelType>(upperLeft, xstride, ystride),
+                ConstStridedCachedFileImageIterator<PixelType>(lowerRight, xstride, ystride),
+                typename IteratorTraits<ConstStridedCachedFileImageIterator<PixelType> >::DefaultAccessor());
+}
+
+template <typename PixelType, typename ImgAccessor>
+vigra::triple<StridedCachedFileImageIterator<PixelType>, StridedCachedFileImageIterator<PixelType>, ImgAccessor>
+stride(int xstride, int ystride, vigra::triple<CachedFileImageIterator<PixelType>, CachedFileImageIterator<PixelType>, ImgAccessor> image) {
+    Diff2D diff = image.second - image.first;
+    if (diff.x % xstride) diff.x += (xstride - (diff.x % xstride));
+    if (diff.y % ystride) diff.y += (ystride - (diff.y % ystride));
+    //cout << "stride(" << xstride << ", " << ystride << ", " << (image.second - image.first) << ", " << diff << ")" << endl;
+    return vigra::make_triple(StridedCachedFileImageIterator<PixelType>(image.first, xstride, ystride),
+                       StridedCachedFileImageIterator<PixelType>(image.first + diff, xstride, ystride),
+                       image.third);
+};
+
+template <typename PixelType, typename ImgAccessor>
+vigra::triple<ConstStridedCachedFileImageIterator<PixelType>, ConstStridedCachedFileImageIterator<PixelType>, ImgAccessor>
+stride(int xstride, int ystride, vigra::triple<ConstCachedFileImageIterator<PixelType>, ConstCachedFileImageIterator<PixelType>, ImgAccessor> image) {
+    Diff2D diff = image.second - image.first;
+    if (diff.x % xstride) diff.x += (xstride - (diff.x % xstride));
+    if (diff.y % ystride) diff.y += (ystride - (diff.y % ystride));
+    //cout << "stride(" << xstride << ", " << ystride << ", " << (image.second - image.first) << ", " << diff << ")" << endl;
+    return vigra::make_triple(ConstStridedCachedFileImageIterator<PixelType>(image.first, xstride, ystride),
+                       ConstStridedCachedFileImageIterator<PixelType>(image.first + diff, xstride, ystride),
+                       image.third);
+};
+
+template <typename PixelType, typename ImgAccessor>
+std::pair<StridedCachedFileImageIterator<PixelType>, ImgAccessor>
+stride(int xstride, int ystride, std::pair<CachedFileImageIterator<PixelType>, ImgAccessor> image) {
+    return std::make_pair(StridedCachedFileImageIterator<PixelType>(image.first, xstride, ystride), image.second);
+};
+
+template <typename PixelType, typename ImgAccessor>
+std::pair<ConstStridedCachedFileImageIterator<PixelType>, ImgAccessor>
+stride(int xstride, int ystride, std::pair<ConstCachedFileImageIterator<PixelType>, ImgAccessor> image) {
+    return std::make_pair(ConstStridedCachedFileImageIterator<PixelType>(image.first, xstride, ystride), image.second);
+};
 
 } // namespace vigra
 

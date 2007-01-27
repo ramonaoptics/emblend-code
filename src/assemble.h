@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2005 Andrew Mihal
+ * Copyright (C) 2004-2007 Andrew Mihal
  *
  * This file is part of Enblend.
  *
@@ -34,14 +34,16 @@
 #endif
 
 #include "common.h"
+#include "fixmath.h"
 #include "vigra/copyimage.hxx"
 #include "vigra/impex.hxx"
-#include "vigra/impexalpha.hxx"
 #include "vigra/inspectimage.hxx"
 #include "vigra/numerictraits.hxx"
 #include "vigra/transformimage.hxx"
 #include "vigra_ext/FunctorAccessor.h"
+#include "vigra_ext/impexalpha.hxx"
 
+using std::cerr;
 using std::cout;
 using std::endl;
 using std::list;
@@ -56,12 +58,74 @@ using vigra::ImageImportInfo;
 using vigra::importImageAlpha;
 using vigra::inspectImageIf;
 using vigra::NumericTraits;
+using vigra::Rect2D;
 using vigra::Threshold;
 using vigra::transformImage;
 
+using vigra_ext::ReadFunctorAccessor;
 using vigra_ext::WriteFunctorAccessor;
 
 namespace enblend {
+
+/** Write output images.
+ */
+template <typename ImageType, typename AlphaType>
+void checkpoint(pair<ImageType*, AlphaType*> &p, ImageExportInfo &outputImageInfo) {
+
+    typedef typename ImageType::PixelType ImagePixelType;
+    typedef typename EnblendNumericTraits<ImagePixelType>::ImagePixelComponentType ImagePixelComponentType;
+    typedef typename AlphaType::Accessor AlphaAccessor;
+    typedef typename AlphaType::PixelType AlphaPixelType;
+
+    typedef ReadFunctorAccessor<
+            Threshold<AlphaPixelType, ImagePixelComponentType>, AlphaAccessor>
+            ThresholdingAccessor;
+ 
+    ThresholdingAccessor ata(
+            Threshold<AlphaPixelType, ImagePixelComponentType>(
+                    NumericTraits<AlphaPixelType>::zero(),
+                    NumericTraits<AlphaPixelType>::zero(),
+                    NumericTraits<ImagePixelComponentType>::max(),
+                    NumericTraits<ImagePixelComponentType>::zero()
+            ),
+            (p.second)->accessor());
+
+    exportImageAlpha(srcImageRange(*(p.first)),
+                     srcIter((p.second)->upperLeft(), ata),
+                     outputImageInfo);
+
+};
+
+template <typename DestIterator, typename DestAccessor,
+          typename AlphaIterator, typename AlphaAccessor>
+void import(const ImageImportInfo &info,
+            const pair<DestIterator, DestAccessor> &image,
+            const pair<AlphaIterator, AlphaAccessor> &alpha) {
+
+    typedef typename DestIterator::PixelType ImagePixelType;
+    typedef typename EnblendNumericTraits<ImagePixelType>::ImagePixelComponentType ImagePixelComponentType;
+    typedef typename AlphaIterator::PixelType AlphaPixelType;
+
+    // Use a thresholding accessor to write to the alpha image.
+    typedef WriteFunctorAccessor<
+            Threshold<ImagePixelComponentType, AlphaPixelType>, AlphaAccessor>
+            ThresholdingAccessor;
+
+    // Threshold the alpha mask so that all pixels are either contributing
+    // or not contributing.
+    ThresholdingAccessor ata(
+            Threshold<ImagePixelComponentType, AlphaPixelType>(
+                    //NumericTraits<AlphaPixelType>::max() / 2,
+                    NumericTraits<ImagePixelComponentType>::max(),
+                    NumericTraits<ImagePixelComponentType>::max(),
+                    NumericTraits<AlphaPixelType>::zero(),
+                    NumericTraits<AlphaPixelType>::max()
+            ),
+            alpha.second);
+
+    importImageAlpha(info, image, destIter(alpha.first, ata));
+
+};
 
 /** Find images that don't overlap and assemble them into one image.
  *  Uses a greedy heuristic.
@@ -71,10 +135,9 @@ namespace enblend {
  */
 template <typename ImageType, typename AlphaType>
 pair<ImageType*, AlphaType*> assemble(list<ImageImportInfo*> &imageInfoList,
-        EnblendROI &inputUnion,
-        EnblendROI &bb) {
+        Rect2D &inputUnion,
+        Rect2D &bb) {
 
-    typedef typename AlphaType::PixelType AlphaPixelType;
     typedef typename AlphaType::traverser AlphaIteratorType;
     typedef typename AlphaType::Accessor AlphaAccessor;
 
@@ -97,26 +160,10 @@ pair<ImageType*, AlphaType*> assemble(list<ImageImportInfo*> &imageInfoList,
         }
     }
 
-    // Load the first image into the destination.
-    // Use a thresholding accessor to write to the alpha image.
-    typedef WriteFunctorAccessor<
-            Threshold<AlphaPixelType, AlphaPixelType>, AlphaAccessor>
-            ThresholdingAccessor;
-    // Threshold the alpha mask so that all pixels are either contributing
-    // or not contributing.
-    ThresholdingAccessor imageATA(
-            Threshold<AlphaPixelType, AlphaPixelType>(
-                    NumericTraits<AlphaPixelType>::max() / 2,
-                    NumericTraits<AlphaPixelType>::max(),
-                    NumericTraits<AlphaPixelType>::zero(),
-                    NumericTraits<AlphaPixelType>::max()
-            ),
-            imageA->accessor());
-
     Diff2D imagePos = imageInfoList.front()->getPosition();
-    importImageAlpha(*imageInfoList.front(),
-            destIter(image->upperLeft() + imagePos - inputUnion.getUL()),
-            destIter(imageA->upperLeft() + imagePos - inputUnion.getUL(), imageATA));
+    import(*imageInfoList.front(),
+            destIter(image->upperLeft() + imagePos - inputUnion.upperLeft()),
+            destIter(imageA->upperLeft() + imagePos - inputUnion.upperLeft()));
     imageInfoList.erase(imageInfoList.begin());
 
     if (!OneAtATime) {
@@ -133,29 +180,20 @@ pair<ImageType*, AlphaType*> assemble(list<ImageImportInfo*> &imageInfoList,
             ImageType *src = new ImageType(info->size());
             AlphaType *srcA = new AlphaType(info->size());
 
-            // Use a thresholding accessor to write to the alpha image.
-            ThresholdingAccessor srcATA(
-                    Threshold<AlphaPixelType, AlphaPixelType>(
-                            NumericTraits<AlphaPixelType>::max() / 2,
-                            NumericTraits<AlphaPixelType>::max(),
-                            NumericTraits<AlphaPixelType>::zero(),
-                            NumericTraits<AlphaPixelType>::max()
-                    ),
-                    srcA->accessor());
-            importImageAlpha(*info, destImage(*src), destImage(*srcA, srcATA));
+            import(*info, destImage(*src), destImage(*srcA));
 
             // Check for overlap.
             bool overlapFound = false;
             AlphaIteratorType dy =
-                    imageA->upperLeft() - inputUnion.getUL() + info->getPosition();
+                    imageA->upperLeft() - inputUnion.upperLeft() + info->getPosition();
             AlphaAccessor da = imageA->accessor();
             AlphaIteratorType sy = srcA->upperLeft();
             AlphaIteratorType send = srcA->lowerRight();
             AlphaAccessor sa = srcA->accessor();
-            for(; sy.y != send.y; ++sy.y, ++dy.y) {
+            for(; sy.y < send.y; ++sy.y, ++dy.y) {
                 AlphaIteratorType sx = sy;
                 AlphaIteratorType dx = dy;
-                for(; sx.x != send.x; ++sx.x, ++dx.x) {
+                for(; sx.x < send.x; ++sx.x, ++dx.x) {
                     if (sa(sx) && da(dx)) {
                         overlapFound = true;
                         break;
@@ -175,10 +213,10 @@ pair<ImageType*, AlphaType*> assemble(list<ImageImportInfo*> &imageInfoList,
                 Diff2D srcPos = info->getPosition();
                 copyImageIf(srcImageRange(*src),
                         maskImage(*srcA),
-                        destIter(image->upperLeft() - inputUnion.getUL() + srcPos));
+                        destIter(image->upperLeft() - inputUnion.upperLeft() + srcPos));
                 copyImageIf(srcImageRange(*srcA),
                         maskImage(*srcA),
-                        destIter(imageA->upperLeft() - inputUnion.getUL() + srcPos));
+                        destIter(imageA->upperLeft() - inputUnion.upperLeft() + srcPos));
 
                 // Remove info from list later.
                 toBeRemoved.push_back(i);
@@ -201,18 +239,10 @@ pair<ImageType*, AlphaType*> assemble(list<ImageImportInfo*> &imageInfoList,
     FindBoundingRectangle unionRect;
     inspectImageIf(srcIterRange(Diff2D(), Diff2D() + image->size()),
             srcImage(*imageA), unionRect);
-    bb.setCorners(unionRect.upperLeft, unionRect.lowerRight);
+    bb = unionRect();
 
     if (Verbose > VERBOSE_ABB_MESSAGES) {
-        cout << "assembled images bounding box: ("
-             << unionRect.upperLeft.x
-             << ", "
-             << unionRect.upperLeft.y
-             << ") -> ("
-             << unionRect.lowerRight.x
-             << ", "
-             << unionRect.lowerRight.y
-             << ")" << endl;
+        cout << "assembled images bounding box: " << unionRect() << endl;
     }
 
     return pair<ImageType*, AlphaType*>(image, imageA);

@@ -4,19 +4,33 @@
 /*       Cognitive Systems Group, University of Hamburg, Germany        */
 /*                                                                      */
 /*    This file is part of the VIGRA computer vision library.           */
-/*    ( Version 1.2.0, Aug 07 2003 )                                    */
-/*    You may use, modify, and distribute this software according       */
-/*    to the terms stated in the LICENSE file included in               */
-/*    the VIGRA distribution.                                           */
-/*                                                                      */
 /*    The VIGRA Website is                                              */
 /*        http://kogs-www.informatik.uni-hamburg.de/~koethe/vigra/      */
 /*    Please direct questions, bug reports, and contributions to        */
-/*        koethe@informatik.uni-hamburg.de                              */
+/*        koethe@informatik.uni-hamburg.de          or                  */
+/*        vigra@kogs1.informatik.uni-hamburg.de                         */
 /*                                                                      */
-/*  THIS SOFTWARE IS PROVIDED AS IS AND WITHOUT ANY EXPRESS OR          */
-/*  IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED      */
-/*  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. */
+/*    Permission is hereby granted, free of charge, to any person       */
+/*    obtaining a copy of this software and associated documentation    */
+/*    files (the "Software"), to deal in the Software without           */
+/*    restriction, including without limitation the rights to use,      */
+/*    copy, modify, merge, publish, distribute, sublicense, and/or      */
+/*    sell copies of the Software, and to permit persons to whom the    */
+/*    Software is furnished to do so, subject to the following          */
+/*    conditions:                                                       */
+/*                                                                      */
+/*    The above copyright notice and this permission notice shall be    */
+/*    included in all copies or substantial portions of the             */
+/*    Software.                                                         */
+/*                                                                      */
+/*    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND    */
+/*    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES   */
+/*    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND          */
+/*    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT       */
+/*    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,      */
+/*    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING      */
+/*    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR     */
+/*    OTHER DEALINGS IN THE SOFTWARE.                                   */
 /*                                                                      */
 /************************************************************************/
 
@@ -30,8 +44,45 @@
 #include "vigra/numerictraits.hxx"
 #include "vigra/accessor.hxx"
 #include "vigra/tinyvector.hxx"
+#include "vigra/static_assert.hxx"
 
 namespace vigra {
+
+namespace detail {
+
+template <unsigned int I, unsigned int R, unsigned int G, unsigned int B>
+struct SelectColorIndexRHS;
+
+template <unsigned int R, unsigned int G, unsigned int B>
+struct SelectColorIndexRHS<0, R, G, B>
+{
+    enum { res = R };
+};
+
+template <unsigned int R, unsigned int G, unsigned int B>
+struct SelectColorIndexRHS<1, R, G, B>
+{
+    enum { res = G };
+};
+
+template <unsigned int R, unsigned int G, unsigned int B>
+struct SelectColorIndexRHS<2, R, G, B>
+{
+    enum { res = B };
+};
+
+} // namespace detail
+
+#ifndef DOXYGEN
+
+template <unsigned int R, unsigned int G, unsigned int B>
+struct RGBValue_bad_color_indices
+: staticAssert::AssertBool<(R < 3 && G < 3 && B < 3 &&
+                           ((1 << R) + (1 << G) + (1 << B) == 7))>
+{};
+
+#endif /* DOXYGEN */
+
 
 /********************************************************/
 /*                                                      */
@@ -42,10 +93,19 @@ namespace vigra {
 /** \brief Class for a single RGB value.
 
     This class contains three values (of the specified type) that represent
-    red, green, and blue color channels. There are three possibilities
-    to access these values: accessor functions (\ref red(), \ref green(),
-    \ref blue()), index operator (operator[](dx), where 0 is red,
-    1 is green and 2 is blue) and iterator (STL-compatible random access
+    red, green, and blue color channels. By means of the template parameters
+    <tt>RED_IDX, GREEN_IDX, BLUE_IDX</tt>, the indices 0, 1, 2 can be assigned to
+    the three colors arbitrarily, so that, for example, a BGR type can be created
+    as
+
+    \code
+    typedef RGBValue<unsigned char, 2,1,0> BGRValue;
+    \endcode
+
+    The standard order red=0, green=1, blue=2 is the default. There are three possibilities
+    to access the color values: accessor functions (\ref red(), \ref green(),
+    \ref blue()), index operator (operator[](dx), where the <tt>rgb[RED_IDX]</tt>
+    returns red etc.) and iterator (STL-compatible random access
     iterator that references the three colors in turn). The latter two
     methods, together with the necessary embedded typedefs, ensure
     compatibility of a RGBValue with a STL vector.
@@ -63,52 +123,87 @@ namespace vigra {
     <b>\#include</b> "<a href="rgbvalue_8hxx-source.html">vigra/rgbvalue.hxx</a>"<br>
     Namespace: vigra
 */
-template <class VALUETYPE>
+template <class VALUETYPE, unsigned int RED_IDX = 0, unsigned int GREEN_IDX = 1, unsigned int BLUE_IDX = 2>
 class RGBValue
 : public TinyVector<VALUETYPE, 3>
 {
     typedef TinyVector<VALUETYPE, 3> Base;
+
+        // inverse mapping from index to color
+    enum {
+      IDX0 = (RED_IDX == 0) ? 0 : (GREEN_IDX == 0) ? 1 : 2,
+      IDX1 = (RED_IDX == 1) ? 0 : (GREEN_IDX == 1) ? 1 : 2,
+      IDX2 = (RED_IDX == 2) ? 0 : (GREEN_IDX == 2) ? 1 : 2
+    };
+
   public:
         /** STL-compatible definition of valuetype
         */
-    typedef VALUETYPE value_type;
+    typedef typename Base::value_type value_type;
         /** STL-compatible definition of iterator
         */
-    typedef typename TinyVector<VALUETYPE, 3>::iterator iterator;
+    typedef typename Base::iterator iterator;
         /** STL-compatible definition of const iterator
         */
-    typedef typename TinyVector<VALUETYPE, 3>::const_iterator const_iterator;
-
-        /** Construct from explicit color values
+    typedef typename Base::const_iterator const_iterator;
+        /** squared norm type (result of squaredManitude())
         */
-    RGBValue(value_type red, value_type green, value_type blue)
-    : Base(red, green, blue)
-    {}
+    typedef typename Base::SquaredNormType SquaredNormType;
+        /** norm type (result of magnitude())
+        */
+    typedef typename Base::NormType NormType;
+
+        /** Color index positions
+        */
+    enum
+    {
+      RedIdx = RED_IDX,
+      GreenIdx = GREEN_IDX,
+      BlueIdx = BLUE_IDX
+    };
+
+        /** Construct from explicit color values.
+            \a first, \a second, \a third are written in this order,
+            irrespective of how the color indices are specified.
+        */
+    RGBValue(value_type first, value_type second, value_type third)
+    : Base(first, second, third)
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
         /** Construct gray value
         */
     RGBValue(value_type gray)
     : Base(gray, gray, gray)
-    {}
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
         /** Construct from another sequence (must have length 3!)
         */
     template <class Iterator>
     RGBValue(Iterator i, Iterator end)
     : Base(i[0], i[1], i[2])
-    {}
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
         /** Default constructor (sets all components to 0)
         */
     RGBValue()
     : Base(0, 0, 0)
-    {}
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
 #if !defined(TEMPLATE_COPY_CONSTRUCTOR_BUG)
 
     RGBValue(RGBValue const & r)
     : Base(r)
-    {}
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
     RGBValue & operator=(RGBValue const & r)
     {
@@ -118,20 +213,25 @@ class RGBValue
 
 #endif // TEMPLATE_COPY_CONSTRUCTOR_BUG
 
-
         /** Copy constructor.
         */
-    template <class U>
-    RGBValue(RGBValue<U> const & r)
-    : Base(r)
-    {}
+    template <class U, unsigned int R, unsigned int G, unsigned int B>
+    RGBValue(RGBValue<U, R, G, B> const & r)
+    : Base(detail::RequiresExplicitCast<value_type>::cast(r[detail::SelectColorIndexRHS<IDX0, R, G, B>::res]),
+           detail::RequiresExplicitCast<value_type>::cast(r[detail::SelectColorIndexRHS<IDX1, R, G, B>::res]),
+           detail::RequiresExplicitCast<value_type>::cast(r[detail::SelectColorIndexRHS<IDX2, R, G, B>::res]))
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
         /** Copy assignment.
         */
-    template <class U>
-    RGBValue & operator=(RGBValue<U> const & r)
+    template <class U, unsigned int R, unsigned int G, unsigned int B>
+    RGBValue & operator=(RGBValue<U, R, G, B> const & r)
     {
-        Base::operator=(r);
+        setRed(detail::RequiresExplicitCast<value_type>::cast(r.red()));
+        setGreen(detail::RequiresExplicitCast<value_type>::cast(r.green()));
+        setBlue(detail::RequiresExplicitCast<value_type>::cast(r.blue()));
         return *this;
     }
 
@@ -139,7 +239,9 @@ class RGBValue
         */
     RGBValue(TinyVector<value_type, 3> const & r)
     : Base(r)
-    {}
+    {
+        VIGRA_STATIC_ASSERT((RGBValue_bad_color_indices<RED_IDX, GREEN_IDX, BLUE_IDX>));
+    }
 
         /** assign TinyVector.
         */
@@ -158,73 +260,84 @@ class RGBValue
 
         /** Access red component.
         */
-    value_type & red() { return (*this)[0]; }
+    value_type & red() { return (*this)[RED_IDX]; }
 
         /** Access green component.
         */
-    value_type & green() { return (*this)[1]; }
+    value_type & green() { return (*this)[GREEN_IDX]; }
 
         /** Access blue component.
         */
-    value_type & blue() { return (*this)[2]; }
+    value_type & blue() { return (*this)[BLUE_IDX]; }
 
         /** Get red component.
         */
-    value_type const & red() const { return (*this)[0]; }
+    value_type const & red() const { return (*this)[RED_IDX]; }
 
         /** Get green component.
         */
-    value_type const & green() const { return (*this)[1]; }
+    value_type const & green() const { return (*this)[GREEN_IDX]; }
 
         /** Get blue component.
         */
-    value_type const & blue() const { return (*this)[2]; }
+    value_type const & blue() const { return (*this)[BLUE_IDX]; }
 
         /** Calculate luminance.
         */
     value_type luminance() const {
          return detail::RequiresExplicitCast<value_type>::cast(0.3*red() + 0.59*green() + 0.11*blue()); }
 
+    // mihal 20061017 quick-and-dirty hue calculation
+    value_type hue() const {
+        value_type max = std::max(red(), std::max(green(), blue()));
+        value_type min = std::min(red(), std::min(green(), blue()));
+        value_type delta = (max - min) * 6;
+        typename NumericTraits<value_type>::RealPromote rdelta = NumericTraits<value_type>::toRealPromote(delta);
+        typename NumericTraits<value_type>::RealPromote h = 0.0;
+        if (red() == max) h = (green() - blue()) / rdelta;
+        else if (green() == max) h = (1/3) + ((blue() - red()) / rdelta);
+        else h = (2/3) + ((red() - green()) / rdelta);
+        if (h < 0.0) h += 1.0;
+        return NumericTraits<value_type>::fromRealPromote(h * NumericTraits<value_type>::max());
+    }
+
         /** Calculate magnitude.
         */
-    typename NumericTraits<VALUETYPE>::RealPromote
-    magnitude() const {
-         return VIGRA_CSTD::sqrt(
-            (typename NumericTraits<VALUETYPE>::RealPromote)squaredMagnitude());
+    NormType magnitude() const {
+         return Base::magnitude();
     }
 
         /** Calculate squared magnitude.
         */
-    typename NumericTraits<VALUETYPE>::Promote
-    squaredMagnitude() const {
-         return red()*red() + green()*green() + blue()*blue();
+    SquaredNormType squaredMagnitude() const {
+         return Base::squaredMagnitude();
     }
 
         /** Set red component. The type <TT>V</TT> of the passed
             in <TT>value</TT> is automatically converted to <TT>VALUETYPE</TT>.
         */
     template <class V>
-    void setRed(V value) { (*this)[0] = detail::RequiresExplicitCast<value_type>::cast(value); }
+    void setRed(V value) { (*this)[RED_IDX] = detail::RequiresExplicitCast<value_type>::cast(value); }
 
         /** Set green component.The type <TT>V</TT> of the passed
             in <TT>value</TT> is automatically converted to <TT>VALUETYPE</TT>.
         */
     template <class V>
-    void setGreen(V value) { (*this)[1] = detail::RequiresExplicitCast<value_type>::cast(value); }
+    void setGreen(V value) { (*this)[GREEN_IDX] = detail::RequiresExplicitCast<value_type>::cast(value); }
 
         /** Set blue component.The type <TT>V</TT> of the passed
             in <TT>value</TT> is automatically converted to <TT>VALUETYPE</TT>.
         */
     template <class V>
-    void setBlue(V value) { (*this)[2] = detail::RequiresExplicitCast<value_type>::cast(value); }
+    void setBlue(V value) { (*this)[BLUE_IDX] = detail::RequiresExplicitCast<value_type>::cast(value); }
 
 
     template <class V>
     void setRGB(V r, V g, V b)
     {
-        (*this)[0] = detail::RequiresExplicitCast<value_type>::cast(r);
-        (*this)[1] = detail::RequiresExplicitCast<value_type>::cast(g);
-        (*this)[2] = detail::RequiresExplicitCast<value_type>::cast(b);
+        (*this)[RED_IDX] = detail::RequiresExplicitCast<value_type>::cast(r);
+        (*this)[GREEN_IDX] = detail::RequiresExplicitCast<value_type>::cast(g);
+        (*this)[BLUE_IDX] = detail::RequiresExplicitCast<value_type>::cast(b);
     }
 };
 
@@ -247,25 +360,29 @@ class RGBValue
  */
 //@{
     /// component-wise equal
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int GIDX1, unsigned int BIDX1,
+          class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
 bool
-operator==(RGBValue<V1> const & l, RGBValue<V2> const & r)
+operator==(RGBValue<V1, RIDX1, GIDX1, BIDX1> const & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
 {
     return (l.red() == r.red()) &&
-       (l.green() == r.green()) &&
-       (l.blue() == r.blue());
+           (l.green() == r.green()) &&
+           (l.blue() == r.blue());
 }
 
     /// component-wise not equal
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int GIDX1, unsigned int BIDX1,
+          class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
 bool
-operator!=(RGBValue<V1> const & l, RGBValue<V2> const & r)
+operator!=(RGBValue<V1, RIDX1, GIDX1, BIDX1> const & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
 {
     return (l.red() != r.red()) ||
-       (l.green() != r.green()) ||
-       (l.blue() != r.blue());
+           (l.green() != r.green()) ||
+           (l.blue() != r.blue());
 }
 
 
@@ -281,26 +398,51 @@ operator!=(RGBValue<V1> const & l, RGBValue<V2> const & r)
     The numeric and promote traits for RGBValues follow
     the general specifications for \ref NumericPromotionTraits.
     They are implemented in terms of the traits of the basic types by
-    partial template specialization:
+    partial template specialization. Note that PromoteTraits are only defined
+    for the case that the color indices are the same in both RGBValues.
 
     \code
 
-    template <class T>
-    struct NumericTraits<RGBValue<T> >
+    template <class T, unsigned int R, unsigned int G, unsigned int B>
+    struct NumericTraits<RGBValue<T, R, G, B> >
     {
-        typedef RGBValue<typename NumericTraits<T>::Promote> Promote;
-        typedef RGBValue<typename NumericTraits<T>::RealPromote> RealPromote;
+        typedef RGBValue<T, R, G, B> Type;
+        typedef RGBValue<typename NumericTraits<T>::Promote, R, G, B> Promote;
+        typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> RealPromote;
+        typedef RGBValue<typename NumericTraits<T>::ComplexPromote, R, G, B> ComplexPromote;
+        typedef T ValueType;
 
         typedef typename NumericTraits<T>::isIntegral isIntegral;
         typedef VigraFalseType isScalar;
+        typedef typename NumericTraits<T>::isSigned isSigned;
 
         // etc.
     };
 
-    template <class T1, class T2>
-    struct PromoteTraits<RGBValue<T1>, RGBValue<T2> >
+    template <class T, unsigned int R, unsigned int G, unsigned int B>
+    struct NormTraits<RGBValue<T, R, G, B> >
     {
-        typedef RGBValue<typename PromoteTraits<T1, T2>::Promote> Promote;
+        typedef RGBValue<T, R, G, B> Type;
+        typedef typename Type::SquaredNormType    SquaredNormType;
+        typedef typename Type::NormType           NormType;
+    };
+
+    template <class T1, unsigned int R, unsigned int G, unsigned int B, class T2>
+    struct PromoteTraits<RGBValue<T1, R, G, B>, RGBValue<T2, R, G, B> >
+    {
+        typedef RGBValue<typename PromoteTraits<T1, T2>::Promote, R, G, B> Promote;
+    };
+
+    template <class T, unsigned int R, unsigned int G, unsigned int B>
+    struct PromoteTraits<RGBValue<T, R, G, B>, double >
+    {
+        typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> Promote;
+    };
+
+    template <class T, unsigned int R, unsigned int G, unsigned int B>
+    struct PromoteTraits<double, RGBValue<T, R, G, B> >
+    {
+        typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> Promote;
     };
     \endcode
 
@@ -311,77 +453,92 @@ operator!=(RGBValue<V1> const & l, RGBValue<V2> const & r)
 
 #if !defined(NO_PARTIAL_TEMPLATE_SPECIALIZATION)
 
-template <class T>
-struct NumericTraits<RGBValue<T> >
+template <class T, unsigned int R, unsigned int G, unsigned int B>
+struct NumericTraits<RGBValue<T, R, G, B> >
 {
-    typedef RGBValue<T> Type;
-    typedef RGBValue<typename NumericTraits<T>::Promote> Promote;
-    typedef RGBValue<typename NumericTraits<T>::RealPromote> RealPromote;
+    typedef RGBValue<T, R, G, B> Type;
+    typedef RGBValue<typename NumericTraits<T>::Promote, R, G, B> Promote;
+    typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> RealPromote;
+    typedef RGBValue<typename NumericTraits<T>::ComplexPromote, R, G, B> ComplexPromote;
+    typedef T ValueType;
 
     typedef typename NumericTraits<T>::isIntegral isIntegral;
-    typedef typename NumericTraits<T>::isSigned isSigned;
     typedef VigraFalseType isScalar;
+    typedef typename NumericTraits<T>::isSigned isSigned;
     typedef VigraFalseType isOrdered;
+    typedef VigraFalseType isComplex;
 
-    static RGBValue<T> zero() {
-        return RGBValue<T>(NumericTraits<T>::zero());
+    static Type zero() {
+        return Type(NumericTraits<T>::zero());
     }
-    static RGBValue<T> one() {
-        return RGBValue<T>(NumericTraits<T>::one());
+    static Type one() {
+        return Type(NumericTraits<T>::one());
     }
-    static RGBValue<T> nonZero() {
-        return RGBValue<T>(NumericTraits<T>::nonZero());
+    static Type nonZero() {
+        return Type(NumericTraits<T>::nonZero());
     }
 
-    static Promote toPromote(RGBValue<T> const & v) {
+    static Promote toPromote(Type const & v) {
         return Promote(v);
     }
-    static RealPromote toRealPromote(RGBValue<T> const & v) {
+    static RealPromote toRealPromote(Type const & v) {
         return RealPromote(v);
     }
-    static RGBValue<T> fromPromote(Promote const & v) {
-        return RGBValue<T>(NumericTraits<T>::fromPromote(v.red()),
-                           NumericTraits<T>::fromPromote(v.green()),
-                           NumericTraits<T>::fromPromote(v.blue()));
+    static Type fromPromote(Promote const & v) {
+      return Type(NumericTraits<T>::fromPromote(v.red()),
+                  NumericTraits<T>::fromPromote(v.green()),
+                  NumericTraits<T>::fromPromote(v.blue()));
     }
-    static RGBValue<T> fromRealPromote(RealPromote const & v) {
-        return RGBValue<T>(NumericTraits<T>::fromRealPromote(v.red()),
-                           NumericTraits<T>::fromRealPromote(v.green()),
-                           NumericTraits<T>::fromRealPromote(v.blue()));
+    static Type fromRealPromote(RealPromote const & v) {
+        return Type(NumericTraits<T>::fromRealPromote(v.red()),
+                    NumericTraits<T>::fromRealPromote(v.green()),
+                    NumericTraits<T>::fromRealPromote(v.blue()));
     }
 };
 
-template <class T1, class T2>
-struct PromoteTraits<RGBValue<T1>, RGBValue<T2> >
+template <class T, unsigned int R, unsigned int G, unsigned int B>
+struct NormTraits<RGBValue<T, R, G, B> >
 {
-    typedef RGBValue<typename PromoteTraits<T1, T2>::Promote> Promote;
+    typedef RGBValue<T, R, G, B> Type;
+    typedef typename Type::SquaredNormType    SquaredNormType;
+    typedef typename Type::NormType           NormType;
 };
 
-template <class T>
-struct PromoteTraits<RGBValue<T>, double >
+template <class T1, unsigned int R, unsigned int G, unsigned int B, class T2>
+struct PromoteTraits<RGBValue<T1, R, G, B>, RGBValue<T2, R, G, B> >
 {
-    typedef RGBValue<typename NumericTraits<T>::RealPromote> Promote;
+    typedef RGBValue<typename PromoteTraits<T1, T2>::Promote, R, G, B> Promote;
 };
 
-template <class T>
-struct PromoteTraits<double, RGBValue<T> >
+template <class T, unsigned int R, unsigned int G, unsigned int B>
+struct PromoteTraits<RGBValue<T, R, G, B>, double >
 {
-    typedef RGBValue<typename NumericTraits<T>::RealPromote> Promote;
+    typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> Promote;
+};
+
+template <class T, unsigned int R, unsigned int G, unsigned int B>
+struct PromoteTraits<double, RGBValue<T, R, G, B> >
+{
+    typedef RGBValue<typename NumericTraits<T>::RealPromote, R, G, B> Promote;
 };
 
 #else // NO_PARTIAL_TEMPLATE_SPECIALIZATION
 
 #define RGBVALUE_NUMTRAITS(T) \
 template<>\
-struct NumericTraits<RGBValue<T> >\
+struct NumericTraits<RGBValue<T, 0, 1, 2> >\
 {\
-    typedef RGBValue<T> Type;\
-    typedef RGBValue<NumericTraits<T>::Promote> Promote;\
-    typedef RGBValue<NumericTraits<T>::RealPromote> RealPromote;\
-    typedef NumericTraits<T>::isIntegral isIntegral;\
-    typedef NumericTraits<T>::isSigned isSigned;\
-    typedef VigraFalseType isScalar;\
-    typedef VigraFalseType isOrdered;\
+    typedef RGBValue<T> Type; \
+    typedef RGBValue<NumericTraits<T>::Promote> Promote; \
+    typedef RGBValue<NumericTraits<T>::RealPromote> RealPromote; \
+    typedef RGBValue<NumericTraits<T>::ComplexPromote> ComplexPromote; \
+    typedef T ValueType; \
+    \
+    typedef NumericTraits<T>::isIntegral isIntegral; \
+    typedef VigraFalseType isScalar; \
+    typedef NumericTraits<T>::isSigned isSigned; \
+    typedef VigraFalseType isOrdered; \
+    typedef VigraFalseType isComplex; \
     \
     static RGBValue<T> zero() { \
         return RGBValue<T>(NumericTraits<T>::zero()); \
@@ -415,20 +572,37 @@ struct NumericTraits<RGBValue<T> >\
             *d = NumericTraits<T>::fromRealPromote(*s);\
         return res;\
     }\
+}; \
+template<>\
+struct NormTraits<RGBValue<T, 0, 1, 2> >\
+{\
+    typedef RGBValue<T> Type;\
+    typedef Type::SquaredNormType           SquaredNormType; \
+    typedef Type::NormType NormType; \
 };
 
 #define RGBVALUE_PROMTRAITS1(type1) \
 template<> \
-struct PromoteTraits<RGBValue<type1>, RGBValue<type1> > \
+struct PromoteTraits<RGBValue<type1, 0, 1, 2>, RGBValue<type1, 0, 1, 2> > \
 { \
     typedef RGBValue<PromoteTraits<type1, type1>::Promote> Promote; \
     static Promote toPromote(RGBValue<type1> const & v) { \
         return static_cast<Promote>(v); } \
+}; \
+template <> \
+struct PromoteTraits<RGBValue<type1, 0, 1, 2>, double > \
+{ \
+    typedef RGBValue<typename NumericTraits<type1>::RealPromote> Promote; \
+}; \
+template <> \
+struct PromoteTraits<double, RGBValue<type1, 0, 1, 2> > \
+{ \
+    typedef RGBValue<typename NumericTraits<type1>::RealPromote> Promote; \
 };
 
 #define RGBVALUE_PROMTRAITS2(type1, type2) \
 template<> \
-struct PromoteTraits<RGBValue<type1>, RGBValue<type2> > \
+struct PromoteTraits<RGBValue<type1, 0, 1, 2>, RGBValue<type2, 0, 1, 2> > \
 { \
     typedef RGBValue<PromoteTraits<type1, type2>::Promote> Promote; \
     static Promote toPromote(RGBValue<type1> const & v) { \
@@ -475,10 +649,12 @@ RGBVALUE_PROMTRAITS2(float, double)
  */
 //@{
     /// componentwise add-assignment
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int GIDX1, unsigned int BIDX1,
+          class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
-RGBValue<V1> &
-operator+=(RGBValue<V1> & l, RGBValue<V2> const & r)
+RGBValue<V1, RIDX1, GIDX1, BIDX1> &
+operator+=(RGBValue<V1, RIDX1, GIDX1, BIDX1> & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
 {
     l.red() += r.red();
     l.green() += r.green();
@@ -487,10 +663,12 @@ operator+=(RGBValue<V1> & l, RGBValue<V2> const & r)
 }
 
     /// componentwise subtract-assignment
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int GIDX1, unsigned int BIDX1,
+          class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
-RGBValue<V1> &
-operator-=(RGBValue<V1> & l, RGBValue<V2> const & r)
+RGBValue<V1, RIDX1, GIDX1, BIDX1> &
+operator-=(RGBValue<V1, RIDX1, GIDX1, BIDX1> & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
 {
     l.red() -= r.red();
     l.green() -= r.green();
@@ -499,10 +677,11 @@ operator-=(RGBValue<V1> & l, RGBValue<V2> const & r)
 }
 
     /// componentwise multiply-assignment
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int BIDX1, unsigned int GIDX1, class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
-RGBValue<V1> &
-operator*=(RGBValue<V1> & l, RGBValue<V2> const & r)
+RGBValue<V1, RIDX1, GIDX1, BIDX1> &
+operator*=(RGBValue<V1, RIDX1, GIDX1, BIDX1> & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
 {
     l.red() *= r.red();
     l.green() *= r.green();
@@ -510,11 +689,25 @@ operator*=(RGBValue<V1> & l, RGBValue<V2> const & r)
     return l;
 }
 
-    /// componentwise scalar multiply-assignment
-template <class V>
+    /// componentwise divide-assignment
+// mihal 20060909
+template <class V1, unsigned int RIDX1, unsigned int BIDX1, unsigned int GIDX1, class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
-RGBValue<V> &
-operator*=(RGBValue<V> & l, double r)
+RGBValue<V1, RIDX1, GIDX1, BIDX1> &
+operator/=(RGBValue<V1, RIDX1, GIDX1, BIDX1> & l,
+           RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r)
+{
+    l.red() /= r.red();
+    l.green() /= r.green();
+    l.blue() /= r.blue();
+    return l;
+}
+
+    /// componentwise scalar multiply-assignment
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX, class RV>
+inline
+RGBValue<V, RIDX, GIDX, BIDX> &
+operator*=(RGBValue<V, RIDX, GIDX, BIDX> & l, RV r)
 {
     l.red() *= r;
     l.green() *= r;
@@ -523,10 +716,10 @@ operator*=(RGBValue<V> & l, double r)
 }
 
     /// componentwise scalar divide-assignment
-template <class V>
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX, class RV>
 inline
-RGBValue<V> &
-operator/=(RGBValue<V> & l, double r)
+RGBValue<V, RIDX, GIDX, BIDX> &
+operator/=(RGBValue<V, RIDX, GIDX, BIDX> & l, RV r)
 {
     l.red() /= r;
     l.green() /= r;
@@ -534,24 +727,89 @@ operator/=(RGBValue<V> & l, double r)
     return l;
 }
 
+/// component-wise right shift assignment
+// mihal 20050724
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<V, RIDX, GIDX, BIDX> &
+operator>>=(RGBValue<V, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    l.red() >>= s;
+    l.green() >>= s;
+    l.blue() >>= s;
+    return l;
+}
+
+template <unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<double, RIDX, GIDX, BIDX> &
+operator>>=(RGBValue<double, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    double scale = (double)(1 << s);
+    l.red() /= scale;
+    l.green() /= scale;
+    l.blue() /= scale;
+    return l;
+}
+
+template <unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<float, RIDX, GIDX, BIDX> &
+operator>>=(RGBValue<float, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    float scale = (float)(1 << s);
+    l.red() /= scale;
+    l.green() /= scale;
+    l.blue() /= scale;
+    return l;
+}
+
+/// component-wise left shift assignment
+// mihal 20050724
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<V, RIDX, GIDX, BIDX> &
+operator<<=(RGBValue<V, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    l.red() <<= s;
+    l.green() <<= s;
+    l.blue() <<= s;
+    return l;
+}
+
+template <unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<double, RIDX, GIDX, BIDX> &
+operator<<=(RGBValue<double, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    double scale = (double)(1 << s); //exp2(s);
+    l.red() *= scale;
+    l.green() *= scale;
+    l.blue() *= scale;
+    return l;
+}
+
+template <unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
+inline RGBValue<float, RIDX, GIDX, BIDX> &
+operator<<=(RGBValue<float, RIDX, GIDX, BIDX> & l, const unsigned int s) {
+    float scale = (float)(1 << s); //exp2(s);
+    l.red() *= scale;
+    l.green() *= scale;
+    l.blue() *= scale;
+    return l;
+}
+
 using VIGRA_CSTD::abs;
 
     /// component-wise absolute value
-template <class T>
+template <class T, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
 inline
-RGBValue<T> abs(RGBValue<T> const & v) {
-    return RGBValue<T>(abs(v.red()), abs(v.green()),  abs(v.blue()));
+RGBValue<T, RIDX, GIDX, BIDX>
+abs(RGBValue<T, RIDX, GIDX, BIDX> const & v)
+{
+  return RGBValue<T, RIDX, GIDX, BIDX>(abs(v.red()), abs(v.green()), abs(v.blue()));
 }
 
-
-
     /// component-wise addition
-template <class V1, class V2>
+template <class V1, unsigned int R, unsigned int G, unsigned int B, class V2>
 inline
-typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote
-operator+(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
+typename PromoteTraits<RGBValue<V1, R, G, B>,
+                       RGBValue<V2, R, G, B> >::Promote
+operator+(RGBValue<V1, R, G, B> const & r1,
+          RGBValue<V2, R, G, B> const & r2)
 {
-    typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote res(r1);
+    typename PromoteTraits<RGBValue<V1, R, G, B>,
+                           RGBValue<V2, R, G, B> >::Promote res(r1);
 
     res += r2;
 
@@ -559,12 +817,15 @@ operator+(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
 }
 
     /// component-wise subtraction
-template <class V1, class V2>
+template <class V1, unsigned int R, unsigned int G, unsigned int B, class V2>
 inline
-typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote
-operator-(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
+typename PromoteTraits<RGBValue<V1, R, G, B>,
+                       RGBValue<V2, R, G, B> >::Promote
+operator-(RGBValue<V1, R, G, B> const & r1,
+          RGBValue<V2, R, G, B> const & r2)
 {
-    typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote res(r1);
+    typename PromoteTraits<RGBValue<V1, R, G, B>,
+                           RGBValue<V2, R, G, B> >::Promote res(r1);
 
     res -= r2;
 
@@ -572,75 +833,182 @@ operator-(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
 }
 
     /// component-wise multiplication
-template <class V1, class V2>
+template <class V1, unsigned int R, unsigned int G, unsigned int B, class V2>
 inline
-typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote
-operator*(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
+typename PromoteTraits<RGBValue<V1, R, G, B>,
+                       RGBValue<V2, R, G, B> >::Promote
+operator*(RGBValue<V1, R, G, B> const & r1,
+          RGBValue<V2, R, G, B> const & r2)
 {
-    typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote res(r1);
+    typename PromoteTraits<RGBValue<V1, R, G, B>,
+                           RGBValue<V2, R, G, B> >::Promote res(r1);
 
     res *= r2;
 
     return res;
 }
 
-    /// component-wise left scalar multiplication
-template <class V>
+    /// component-wise division
+// mihal 20060909
+template <class V1, unsigned int R, unsigned int G, unsigned int B, class V2>
 inline
-typename NumericTraits<RGBValue<V> >::RealPromote
-operator*(double v, RGBValue<V> const & r)
+typename PromoteTraits<RGBValue<V1, R, G, B>,
+                       RGBValue<V2, R, G, B> >::Promote
+operator/(RGBValue<V1, R, G, B> const & r1,
+          RGBValue<V2, R, G, B> const & r2)
 {
-    typename NumericTraits<RGBValue<V> >::RealPromote res(r);
+    typename PromoteTraits<RGBValue<V1, R, G, B>,
+                           RGBValue<V2, R, G, B> >::Promote res(r1);
 
-    res *= v;
+    res /= r2;
 
     return res;
+}
+
+    /// component-wise left scalar multiplication
+template <class RV, class V, unsigned int R, unsigned int G, unsigned int B>
+inline typename PromoteTraits<RGBValue<V, R, G, B>, RGBValue<RV, R, G, B> >::Promote
+operator*(RV v, RGBValue<V, R, G, B> const & r) {
+    return r * RGBValue<RV, R, G, B>(v);
 }
 
     /// component-wise right scalar multiplication
+template <class V, unsigned int R, unsigned int G, unsigned int B, class RV>
+inline typename PromoteTraits<RGBValue<V, R, G, B>, RGBValue<RV, R, G, B> >::Promote
+operator*(RGBValue<V, R, G, B> const & r, RV v) {
+    return r * RGBValue<RV, R, G, B>(v);
+}
+
+//    /// component-wise scalar division
+template <class V, unsigned int R, unsigned int G, unsigned int B, class RV>
+inline typename PromoteTraits<RGBValue<V, R, G, B>, RGBValue<RV, R, G, B> >::Promote
+operator/(RGBValue<V, R, G, B> const & r, RV v) {
+    return r / RGBValue<RV, R, G, B>(v);
+}
+
+//    /// component-wise left scalar multiplication
+//template <class V, unsigned int R, unsigned int G, unsigned int B>
+//inline
+//typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote
+//operator*(double v, RGBValue<V, R, G, B> const & r)
+//{
+//    typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote res(r);
+//
+//    res *= v;
+//
+//    return res;
+//}
+
+//    /// component-wise right scalar multiplication
+//template <class V, unsigned int R, unsigned int G, unsigned int B>
+//inline
+//typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote
+//operator*(RGBValue<V, R, G, B> const & r, double v)
+//{
+//    typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote res(r);
+//
+//    res *= v;
+//
+//    return res;
+//}
+
+//    /// component-wise scalar division
+//template <class V, unsigned int R, unsigned int G, unsigned int B>
+//inline
+//typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote
+//operator/(RGBValue<V, R, G, B> const & r, double v)
+//{
+//    typename NumericTraits<RGBValue<V, R, G, B> >::RealPromote res(r);
+//
+//    res /= v;
+//
+//    return res;
+//}
+
+/// bit-wise and
+// mihal 20050724
 template <class V>
 inline
-typename NumericTraits<RGBValue<V> >::RealPromote
-operator*(RGBValue<V> const & r, double v)
+RGBValue<V> operator&(RGBValue<V> const & r1, RGBValue<V> const & r2)
 {
-    typename NumericTraits<RGBValue<V> >::RealPromote res(r);
-
-    res *= v;
-
+    RGBValue<V> res(r1.red() & r2.red(), r1.green() & r2.green(), r1.blue() & r2.blue());
     return res;
 }
 
-    /// component-wise scalar division
-template <class V>
-inline
-typename NumericTraits<RGBValue<V> >::RealPromote
-operator/(RGBValue<V> const & r, double v)
+/// component-wise right shift
+// mihal 20050712
+template <class V, unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<V, R, G, B> operator>>(RGBValue<V, R, G, B> const & r, int rs)
 {
-    typename NumericTraits<RGBValue<V> >::RealPromote res(r);
+    RGBValue<V, R, G, B> res(r.red() >> rs, r.green() >> rs, r.blue() >> rs);
+    return res;
+}
 
-    res /= v;
+template <unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<double, R, G, B> operator>>(RGBValue<double, R, G, B> const & r, int rs)
+{
+    double scale = (double)(1 << rs); //exp2(rs);
+    RGBValue<double, R, G, B> res(r.red() / scale, r.green() / scale, r.blue() / scale);
+    return res;
+}
 
+template <unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<float, R, G, B> operator>>(RGBValue<float, R, G, B> const & r, int rs)
+{
+    float scale = (float)(1 << rs); //exp2(rs);
+    RGBValue<float, R, G, B> res(r.red() / scale, r.green() / scale, r.blue() / scale);
+    return res;
+}
+
+/// component-wise left shift
+// mihal 20050714
+template <class V, unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<V, R, G, B> operator<<(RGBValue<V, R, G, B> const & r, int ls)
+{
+    RGBValue<V, R, G, B> res(r.red() << ls, r.green() << ls, r.blue() << ls);
+    return res;
+}
+
+template <unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<double, R, G, B> operator<<(RGBValue<double, R, G, B> const & r, int ls)
+{
+    double scale = (double)(1 << ls); //exp2(ls);
+    RGBValue<double, R, G, B> res(r.red() * scale, r.green() * scale, r.blue() * scale);
+    return res;
+}
+
+template <unsigned int R, unsigned int G, unsigned int B>
+inline RGBValue<float, R, G, B> operator<<(RGBValue<float, R, G, B> const & r, int ls)
+{
+    float scale = (float)(1 << ls); //exp2(ls);
+    RGBValue<float, R, G, B> res(r.red() * scale, r.green() * scale, r.blue() * scale);
     return res;
 }
 
     /// cross product
-template <class V1, class V2>
+template <class V1, unsigned int R, unsigned int G, unsigned int B, class V2>
 inline
-typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote
-cross(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
+typename PromoteTraits<RGBValue<V1, R, G, B>,
+                       RGBValue<V2, R, G, B> >::Promote
+cross(RGBValue<V1, R, G, B> const & r1,
+      RGBValue<V2, R, G, B> const & r2)
 {
-    typedef typename PromoteTraits<RGBValue<V1>, RGBValue<V2> >::Promote
+    typedef typename PromoteTraits<RGBValue<V1, R, G, B>,
+                                   RGBValue<V2, R, G, B> >::Promote
             Res;
+
     return  Res(r1.green()*r2.blue() - r1.blue()*r2.green(),
                 r1.blue()*r2.red() - r1.red()*r2.blue(),
                 r1.red()*r2.green() - r1.green()*r2.red());
 }
 
     /// dot product
-template <class V1, class V2>
+template <class V1, unsigned int RIDX1, unsigned int GIDX1, unsigned int BIDX1,
+          class V2, unsigned int RIDX2, unsigned int GIDX2, unsigned int BIDX2>
 inline
 typename PromoteTraits<V1, V2>::Promote
-dot(RGBValue<V1> const & r1, RGBValue<V2> const & r2)
+dot(RGBValue<V1, RIDX1, GIDX1, BIDX1> const & r1,
+    RGBValue<V2, RIDX2, GIDX2, BIDX2> const & r2)
 {
     return r1.red()*r2.red() + r1.green()*r2.green() + r1.blue()*r2.blue();
 }
@@ -649,28 +1017,28 @@ using VIGRA_CSTD::ceil;
 
     /** Apply ceil() function to each RGB component.
     */
-template <class V>
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
 inline
-RGBValue<V>
-ceil(RGBValue<V> const & r)
+RGBValue<V, RIDX, GIDX, BIDX>
+ceil(RGBValue<V, RIDX, GIDX, BIDX> const & r)
 {
-    return RGBValue<V>(ceil(r.red()),
-                       ceil(r.green()),
-                       ceil(r.blue()));
+    return RGBValue<V, RIDX, GIDX, BIDX>(ceil(r.red()),
+                                         ceil(r.green()),
+                                         ceil(r.blue()));
 }
 
 using VIGRA_CSTD::floor;
 
     /** Apply floor() function to each RGB component.
     */
-template <class V>
+template <class V, unsigned int RIDX, unsigned int GIDX, unsigned int BIDX>
 inline
-RGBValue<V>
-floor(RGBValue<V> const & r)
+RGBValue<V, RIDX, GIDX, BIDX>
+floor(RGBValue<V, RIDX, GIDX, BIDX> const & r)
 {
-    return RGBValue<V>(floor(r.red()),
-                       floor(r.green()),
-                       floor(r.blue()));
+    return RGBValue<V, RIDX, GIDX, BIDX>(floor(r.red()),
+                                         floor(r.green()),
+                                         floor(r.blue()));
 }
 
 //@}
@@ -994,6 +1362,40 @@ class RGBToGrayAccessor
     {
         return i[d].luminance();
     }
+};
+
+
+/********************************************************/
+/*                                                      */
+/*                  GrayToRGBAccessor                   */
+/*                                                      */
+/********************************************************/
+
+    /** Create an RGB view for a grayscale image by making all three channels
+        equal.
+
+    <b>\#include</b> "<a href="rgbvalue_8hxx-source.html">vigra/rgbvalue.hxx</a>"<br>
+    Namespace: vigra
+    */
+template <class VALUETYPE>
+class GrayToRGBAccessor
+{
+   public:
+     typedef typename vigra::RGBValue<VALUETYPE> value_type;
+
+         /** Get RGB value for the given pixel.
+         */
+     template <class ITERATOR>
+     value_type operator()(ITERATOR const & i) const {
+                 return value_type(*i,*i,*i); }
+
+         /** Get RGB value at an offset
+         */
+     template <class ITERATOR, class DIFFERENCE>
+     value_type operator()(ITERATOR const & i, DIFFERENCE d) const
+     {
+         return value_type(i[d],i[d],i[d]);
+     }
 };
 
 

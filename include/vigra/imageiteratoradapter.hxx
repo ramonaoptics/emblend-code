@@ -4,25 +4,36 @@
 /*       Cognitive Systems Group, University of Hamburg, Germany        */
 /*                                                                      */
 /*    This file is part of the VIGRA computer vision library.           */
-/*    ( Version 1.2.0, Aug 07 2003 )                                    */
-/*    You may use, modify, and distribute this software according       */
-/*    to the terms stated in the LICENSE file included in               */
-/*    the VIGRA distribution.                                           */
-/*                                                                      */
 /*    The VIGRA Website is                                              */
 /*        http://kogs-www.informatik.uni-hamburg.de/~koethe/vigra/      */
 /*    Please direct questions, bug reports, and contributions to        */
-/*        koethe@informatik.uni-hamburg.de                              */
+/*        koethe@informatik.uni-hamburg.de          or                  */
+/*        vigra@kogs1.informatik.uni-hamburg.de                         */
 /*                                                                      */
-/*  THIS SOFTWARE IS PROVIDED AS IS AND WITHOUT ANY EXPRESS OR          */
-/*  IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED      */
-/*  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. */
+/*    Permission is hereby granted, free of charge, to any person       */
+/*    obtaining a copy of this software and associated documentation    */
+/*    files (the "Software"), to deal in the Software without           */
+/*    restriction, including without limitation the rights to use,      */
+/*    copy, modify, merge, publish, distribute, sublicense, and/or      */
+/*    sell copies of the Software, and to permit persons to whom the    */
+/*    Software is furnished to do so, subject to the following          */
+/*    conditions:                                                       */
+/*                                                                      */
+/*    The above copyright notice and this permission notice shall be    */
+/*    included in all copies or substantial portions of the             */
+/*    Software.                                                         */
+/*                                                                      */
+/*    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND    */
+/*    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES   */
+/*    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND          */
+/*    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT       */
+/*    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,      */
+/*    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING      */
+/*    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR     */
+/*    OTHER DEALINGS IN THE SOFTWARE.                                   */                
 /*                                                                      */
 /************************************************************************/
-/* Modifications by Andrew Mihal, 29 September 2004:
- * These modifications are placed under the VIGRA license.
- *  - Added default constructor for RowIterator.
- */
+
 
 #ifndef VIGRA_IMAGEITERATORADAPTER_HXX
 #define VIGRA_IMAGEITERATORADAPTER_HXX
@@ -311,11 +322,6 @@ class RowIterator : private IMAGE_ITERATOR
     : IMAGE_ITERATOR(i)
     {}
 
-    // MIHAL
-    //RowIterator()
-    //: IMAGE_ITERATOR()
-    //{}
-
         /** Assignment.
         */
     RowIterator & operator=(RowIterator  const & i)
@@ -505,19 +511,49 @@ class LineIterator : private IMAGE_ITERATOR
         */
     LineIterator(IMAGE_ITERATOR  const & start,
                  IMAGE_ITERATOR  const & end)
-    : IMAGE_ITERATOR(start), x_(0.0), y_(0.0)
+    //: IMAGE_ITERATOR(start), x_(0.0), y_(0.0)
+    : IMAGE_ITERATOR(start)
     {
-        int dx = end.x - start.x;
-        int dy = end.y - start.y;
-        int adx = (dx < 0) ? -dx : dx;
-        int ady = (dy < 0) ? -dy : dy;
-        int dd = (adx > ady) ? adx : ady;
-        if(dd == 0) dd = 1;
+        //int dx = end.x - start.x;
+        //int dy = end.y - start.y;
+        //int adx = (dx < 0) ? -dx : dx;
+        //int ady = (dy < 0) ? -dy : dy;
+        //int dd = (adx > ady) ? adx : ady;
+        //if(dd == 0) dd = 1;
 
-        dx_ = (double)dx / dd;
-        dy_ = (double)dy / dd;
-        if(adx > ady) y_ += dy_ / 2.0;
-        else          x_ += dx_ / 2.0;
+        //dx_ = (double)dx / dd;
+        //dy_ = (double)dy / dd;
+        //if(adx > ady) y_ += dy_ / 2.0;
+        //else          x_ += dx_ / 2.0;
+        dy_ = end.y - start.y;
+        dx_ = end.x - start.x;
+
+        stepy_ = (dy_ < 0) ? -1 : 1;
+        dy_ = std::abs(dy_) << 1;
+
+        stepx_ = (dx_ < 0) ? -1 : 1;
+        dx_ = std::abs(dx_) << 1;
+
+        fraction_ = (dx_ > dy_) ? (dy_ - (dx_ >> 1)) : (dx_ - (dy_ >> 1));
+
+        //if (dy_ < 0) {
+        //    dy_ = -dy_;
+        //    stepy_ = -1;
+        //} else {
+        //    stepy_ = 1;
+        //}
+
+        //if (dx_ < 0) {
+        //    dx_ = -dx_;
+        //    stepx_ = -1;
+        //} else {
+        //    stepx_ = 1;
+        //}
+        //dy_ <<= 1;
+        //dx_ <<= 1;
+
+        //if (dx_ > dy_) fraction_ = dy_ - (dx_ >> 1);
+        //else fraction_ = dx_ - (dy_ >> 1);
     }
 
     /** @name Navigation */
@@ -525,23 +561,40 @@ class LineIterator : private IMAGE_ITERATOR
         ///
     LineIterator &  operator++()
     {
-        x_ += dx_;
-        if(x_ >= 1.0) {
-            x_ -= 1.0;
-            ++(this->x);
+        //x_ += dx_;
+        //if(x_ >= 1.0) {
+        //    x_ -= 1.0;
+        //    ++(this->x);
+        //}
+        //else if(x_ <= -1.0) {
+        //    x_ += 1.0;
+        //    --(this->x);
+        //}
+        //y_ += dy_;
+        //if(y_ >= 1.0) {
+        //    y_ -= 1.0;
+        //    ++(this->y);
+        //}
+        //else if(y_ <= -1.0) {
+        //    y_ += 1.0;
+        //    --(this->y);
+        //}
+        //return *this;
+        if (dx_ > dy_) {
+            if (fraction_ >= 0) {
+                this->y += stepy_;
+                fraction_ -= dx_;
+            }
+            this->x += stepx_;
+            fraction_ += dy_;
         }
-        else if(x_ <= -1.0) {
-            x_ += 1.0;
-            --(this->x);
-        }
-        y_ += dy_;
-        if(y_ >= 1.0) {
-            y_ -= 1.0;
-            ++(this->y);
-        }
-        else if(y_ <= -1.0) {
-            y_ += 1.0;
-            --(this->y);
+        else {
+            if (fraction_ >= 0) {
+                this->x += stepx_;
+                fraction_ -= dy_;
+            }
+            this->y += stepy_;
+            fraction_ += dx_;
         }
         return *this;
     }
@@ -564,9 +617,27 @@ class LineIterator : private IMAGE_ITERATOR
         return IMAGE_ITERATOR::operator==(c);
     }
 
+    // mihal 20061016
+    // This saves us from having to construct a lineEnd LineIterator
+    // when iterating over a line - we can just make one LineIterator and compare
+    // it to the end iterator given in the constructor
+    bool operator==(IMAGE_ITERATOR const & c) const
+    {
+        return IMAGE_ITERATOR::operator==(c);
+    }
+
         /** Inequality.
        */
     bool operator!=(LineIterator const & c) const
+    {
+        return IMAGE_ITERATOR::operator!=(c);
+    }
+
+    // mihal 20061016
+    // This saves us from having to construct a lineEnd LineIterator
+    // when iterating over a line - we can just make one LineIterator and compare
+    // it to the end iterator given in the constructor
+    bool operator!=(IMAGE_ITERATOR const & c) const
     {
         return IMAGE_ITERATOR::operator!=(c);
     }
@@ -593,7 +664,8 @@ class LineIterator : private IMAGE_ITERATOR
 
   private:
 
-    double x_, y_, dx_, dy_;
+    //double x_, y_, dx_, dy_;
+    int dx_, dy_, fraction_, stepx_, stepy_;
 };
 
 //@}

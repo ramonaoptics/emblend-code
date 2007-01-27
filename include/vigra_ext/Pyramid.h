@@ -3,7 +3,7 @@
  *
  *  @author Pablo d'Angelo <pablo.dangelo@web.de>
  *
- *  $Id: Pyramid.h,v 1.1 2004-07-12 23:29:31 mihal Exp $
+ *  $Id: Pyramid.h,v 1.2 2007-01-27 05:00:36 acmihal Exp $
  *
  *  This is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public
@@ -24,6 +24,7 @@
 #ifndef VIGRA_EXT_PYRAMID_H
 #define VIGRA_EXT_PYRAMID_H
 
+#include <vigra/separableconvolution.hxx>
 
 namespace vigra_ext {
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2005 Andrew Mihal
+ * Copyright (C) 2004-2007 Andrew Mihal
  *
  * This file is part of Enblend.
  *
@@ -23,8 +23,16 @@
 
 #ifdef _WIN32
 #include <win32helpers\win32config.h>
+#define isnan _isnan
+#endif // _WIN32
 
+// Defines lrint for fast fromRealPromotes
+#include "float_cast.h"
+
+#ifdef _WIN32
 // Make sure we bring in windows.h the right way
+#define _STLP_VERBOSE_AUTO_LINK
+#define _USE_MATH_DEFINES
 #define NOMINMAX
 #define VC_EXTRALEAN 
 #include <windows.h>
@@ -36,6 +44,7 @@
 #define BOOST_NO_STDC_NAMESPACE 1
 #endif
 
+#include <algorithm>
 #include <iostream>
 #include <list>
 #include <vector>
@@ -43,11 +52,18 @@
 #ifndef _WIN32
 #include <getopt.h>
 #else
-extern "C" int getopt(int nargc, char** nargv, char* ostr);
+//extern "C" int getopt(int nargc, char** nargv, char* ostr);
+extern "C" {
+#include <win32helpers/getopt_long.h>
+}
 #endif
 
 extern "C" char *optarg;
 extern "C" int optind;
+
+#ifndef _WIN32
+#include <fenv.h>
+#endif
 
 #include <signal.h>
 #include <stdlib.h>
@@ -59,6 +75,7 @@ extern "C" int optind;
 #endif
 
 #include <boost/random/mersenne_twister.hpp>
+#include <lcms.h>
 
 // Globals
 
@@ -70,20 +87,42 @@ int Verbose = 1;
 unsigned int ExactLevels = 0;
 bool OneAtATime = true;
 bool Wraparound = false;
-double StitchMismatchThreshold = 0.4;
 bool GimpAssociatedAlphaHack = false;
-bool UseLabColor = false;
+bool UseCIECAM = false;
 bool UseLZW = false;
 bool OutputSizeGiven = false;
 int OutputWidthCmdLine = 0;
 int OutputHeightCmdLine = 0;
+bool Checkpoint = false;
+int UseGPU = 0;
+int OptimizeMask = 1;
+int CoarseMask = 1;
+char *SaveMaskFileName = NULL;
+char *LoadMaskFileName = NULL;
+char *VisualizeMaskFileName = NULL;
+unsigned int GDAKmax = 32;
+unsigned int DijkstraRadius = 25;
+unsigned int MaskVectorizeDistance = 0;
+
+// Globals related to catching SIGINT
+#ifndef _WIN32
+sigset_t SigintMask;
+#endif
+
+// Objects for ICC profiles
+cmsHPROFILE InputProfile = NULL;
+cmsHPROFILE XYZProfile = NULL;
+cmsHTRANSFORM InputToXYZTransform = NULL;
+cmsHTRANSFORM XYZToInputTransform = NULL;
+cmsViewingConditions ViewingConditions;
+LCMSHANDLE CIECAMTransform = NULL;
 
 #include "common.h"
 #include "enblend.h"
+#include "gpu.h"
 
 #include "vigra/impex.hxx"
-#include "vigra/stdimage.hxx"
-#include "vigra/stdcachedfileimage.hxx"
+#include "vigra/sized_int.hxx"
 
 #include <tiffio.h>
 using std::cerr;
@@ -91,42 +130,18 @@ using std::cout;
 using std::endl;
 using std::list;
 
-using vigra::BCFImage;
-using vigra::BImage;
-using vigra::BRGBCFImage;
-using vigra::BRGBImage;
 using vigra::CachedFileImageDirector;
-using vigra::DCFImage;
 using vigra::Diff2D;
-using vigra::DImage;
-using vigra::DRGBCFImage;
-using vigra::DRGBImage;
-using vigra::FCFImage;
-using vigra::FImage;
-using vigra::FRGBCFImage;
-using vigra::FRGBImage;
-using vigra::ICFImage;
-using vigra::IImage;
 using vigra::ImageExportInfo;
 using vigra::ImageImportInfo;
-using vigra::IRGBCFImage;
-using vigra::IRGBImage;
-using vigra::SCFImage;
-using vigra::SImage;
-using vigra::SRGBCFImage;
-using vigra::SRGBImage;
+using vigra::Rect2D;
 using vigra::StdException;
-using vigra::UICFImage;
-using vigra::UIImage;
-using vigra::UIRGBCFImage;
-using vigra::UIRGBImage;
-using vigra::USCFImage;
-using vigra::USImage;
-using vigra::USRGBCFImage;
-using vigra::USRGBImage;
 
 using enblend::enblendMain;
-using enblend::EnblendROI;
+
+#ifdef _WIN32
+#define strdup _strdup
+#endif
 
 /** Print the usage information and quit. */
 void printUsageAndExit() {
@@ -141,21 +156,31 @@ void printUsageAndExit() {
     cout << " -v                Verbose" << endl;
     cout << " -w                Blend across -180/+180 boundary" << endl;
     cout << " -z                Use LZW compression" << endl;
+    cout << " -x                Checkpoint partial results" << endl;
 
     cout << endl << "Extended options:" << endl;
     cout << " -b kilobytes      Image cache block size (default=2MiB)" << endl;
-    cout << " -c                Use CIE L*a*b* color space" << endl;
+    cout << " -c                Use CIECAM02 to blend colors" << endl;
     cout << " -g                Associated alpha hack for Gimp (ver. < 2) and Cinepaint" << endl;
+    cout << " --gpu             Use the graphics card to accelerate some computations." << endl;
     cout << " -f WIDTHxHEIGHT   Manually set the size of the output image." << endl
          << "                   Useful for cropped and shifted input TIFF images," << endl
          << "                   such as those produced by Nona." << endl;
     cout << " -m megabytes      Use this much memory before going to disk (default=1GiB)" << endl;
+    cout << " --visualize=FILE  Save the optimizer's results for debugging." << endl;
 
-    //TODO stitch mismatch avoidance is work-in-progress.
-    //cout << " -t float          Stitch mismatch threshold, [0.0, 1.0]" << endl;
+    cout << endl << "Mask generation options:" << endl;
+    cout << " --coarse-mask     Use an approximation to speedup mask generation. Default." << endl;
+    cout << " --fine-mask       Enables detailed mask generation. Slow. Use this if you" << endl
+         << "                   have very narrow overlap regions." << endl;
+    cout << " --optimize        Turn on mask optimization. This is the default." << endl;
+    cout << " --no-optimize     Turn off mask optimization." << endl;
+    cout << " --save-mask=FILE  Save the generated mask to the given file." << endl;
+    cout << " --load-mask=FILE  Use the mask in the given file instead of generating one." << endl;
 
     // deprecated
     //cout << " -s                Blend images one at a time, in the order given" << endl;
+
     exit(1);
 }
 
@@ -164,10 +189,21 @@ void printUsageAndExit() {
  *  if we are killed.
  */
 void sigint_handler(int sig) {
-    CachedFileImageDirector::v().~CachedFileImageDirector();
+    cout << endl << "Interrupted." << endl;
+    // FIXME what if this occurs in a CFI atomic section?
+    // This is no longer necessary, temp files are unlinked during creation.
+    //CachedFileImageDirector::v().~CachedFileImageDirector();
+    if (UseGPU) {
+        // FIXME what if this occurs in a GL atomic section?
+        //cout << "Cleaning up GPU state..." << endl;
+        wrapupGPU();
+    }
     #if !defined(__GW32C__) && !defined(_WIN32)
-    signal(SIGINT, SIG_DFL);
-    kill(getpid(), SIGINT);
+    struct sigaction action;
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&(action.sa_mask));
+    sigaction(SIGINT, &action, NULL);
+    raise(SIGINT);
     #else
     exit(0);
     #endif
@@ -176,10 +212,25 @@ void sigint_handler(int sig) {
 int main(int argc, char** argv) {
 
 #ifdef _WIN32
-    _controlfp( _RC_UP, _MCW_RC );
+    // Make sure the FPU is set to rounding mode so that the lrint
+    // functions in float_cast.h will work properly.
+    // See changes in vigra numerictraits.hxx
+    _controlfp( _RC_NEAR, _MCW_RC );
+#else
+    fesetround(FE_TONEAREST);
 #endif
     
+#ifndef _WIN32
+    sigemptyset(&SigintMask);
+    sigaddset(&SigintMask, SIGINT);
+
+    struct sigaction action;
+    action.sa_handler = sigint_handler;
+    sigemptyset(&(action.sa_mask));
+    sigaction(SIGINT, &action, NULL);
+#else
     signal(SIGINT, sigint_handler);
+#endif
 
     // Make sure libtiff is compiled with TIF_PLATFORM_CONSOLE
     // to avoid interactive warning dialogs.
@@ -193,10 +244,81 @@ int main(int argc, char** argv) {
     list<char*> inputFileNameList;
     list<char*>::iterator inputFileNameIterator;
 
+    static struct option long_options[] = {
+            {"gpu", no_argument, &UseGPU, 1},
+            {"coarse-mask", no_argument, &CoarseMask, 1},
+            {"fine-mask", no_argument, &CoarseMask, 0},
+            {"optimize", no_argument, &OptimizeMask, 1},
+            {"no-optimize", no_argument, &OptimizeMask, 0},
+            {"save-mask", required_argument, 0, 0},
+            {"load-mask", required_argument, 0, 0},
+            {"visualize", required_argument, 0, 0},
+            {"gda-kmax", required_argument, 0, 1},
+            {"dijkstra-radius", required_argument, 0, 1},
+            {"mask-vectorize-distance", required_argument, 0, 1},
+            {0, 0, 0, 0}
+    };
+
     // Parse command line.
+    int option_index = 0;
     int c;
-    while ((c = getopt(argc, argv, "ab:cf:ghl:m:o:st:vwz")) != -1) {
+    while ((c = getopt_long(argc, argv, "ab:cf:ghl:m:o:svwxz", long_options, &option_index)) != -1) {
         switch (c) {
+            case 0: { /* Long Options with string arguments */
+                if (long_options[option_index].flag != 0) break;
+
+                char **optionString = NULL;
+                switch (option_index) {
+                    case 5: optionString = &SaveMaskFileName; break;
+                    case 6: optionString = &LoadMaskFileName; break;
+                    case 7: optionString = &VisualizeMaskFileName; break;
+                }
+
+                if (*optionString != NULL) {
+                    cerr << "enblend: more than one "
+                         << long_options[option_index].name
+                         << " output file specified."
+                         << endl;
+                    printUsageAndExit();
+                    break;
+                }
+
+                int len = strlen(optarg) + 1;
+
+                try {
+                    *optionString = new char[len];
+                } catch (std::bad_alloc& e) {
+                    cerr << endl << "enblend: out of memory"
+                         << endl << e.what()
+                         << endl;
+                    exit(1);
+                }
+
+                strncpy(*optionString, optarg, len);
+
+                break;
+            }
+            case 1: { /* Long options with unsigned integer arguments */
+                if (long_options[option_index].flag != 0) break;
+
+                unsigned int *optionUInt = NULL;
+                switch (option_index) {
+                    case 8:  optionUInt = &GDAKmax; break;
+                    case 9:  optionUInt = &DijkstraRadius; break;
+                    case 10: optionUInt = &MaskVectorizeDistance; break;
+                }
+
+                int value = atoi(optarg);
+                if (value < 1) {
+                    cerr << "enblend: " << long_options[option_index].name
+                         << " must be 1 or more." << endl;
+                    printUsageAndExit();
+                }
+
+                *optionUInt = static_cast<unsigned int>(value);
+
+                break;
+            }
             case 'a': {
                 OneAtATime = false;
                 break;
@@ -213,7 +335,7 @@ int main(int argc, char** argv) {
                 break;
             }
             case 'c': {
-                UseLabColor = true;
+                UseCIECAM = true;
                 break;
             }
             case 'f': {
@@ -280,24 +402,16 @@ int main(int argc, char** argv) {
                 cerr << "enblend: the -s flag is deprecated." << endl;
                 break;
             }
-            case 't': {
-                printUsageAndExit();
-                //StitchMismatchThreshold = strtod(optarg, NULL);
-                //if (StitchMismatchThreshold < 0.0
-                //        || StitchMismatchThreshold > 1.0) {
-                //    cerr << "enblend: threshold must be between "
-                //         << "0.0 and 1.0 inclusive."
-                //         << endl;
-                //    printUsageAndExit();
-                //}
-                break;
-            }
             case 'v': {
                 Verbose++;
                 break;
             }
             case 'w': {
                 Wraparound = true;
+                break;
+            }
+            case 'x': {
+                Checkpoint = true;
                 break;
             }
             case 'z': {
@@ -311,7 +425,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Make sure mandatory output file name parameter given.
+	// Make sure mandatory output file name parameter given.
     if (outputFileName == NULL) {
         cerr << "enblend: no output file specified." << endl;
         printUsageAndExit();
@@ -359,6 +473,14 @@ int main(int argc, char** argv) {
         printUsageAndExit();
     }
 
+    if (UseGPU) {
+        initGPU();
+    }
+
+    if (MaskVectorizeDistance == 0) {
+        MaskVectorizeDistance = CoarseMask ? 4 : 20;
+    }
+
     // Check that more than one input file was given.
     if (inputFileNameList.size() <= 1) {
         cerr << "enblend: only one input file given. "
@@ -374,7 +496,8 @@ int main(int argc, char** argv) {
 
     bool isColor = false;
     const char *pixelType = NULL;
-    EnblendROI inputUnion;
+    ImageImportInfo::ICCProfile iccProfile;
+    Rect2D inputUnion;
 
     // Check that all input images have the same parameters.
     inputFileNameIterator = inputFileNameList.begin();
@@ -401,7 +524,7 @@ int main(int argc, char** argv) {
 
             if (inputInfo->isColor()) cout << "RGB ";
 
-            if (inputInfo->getICCProfileLength() > 0) cout << "ICC ";
+            if (!inputInfo->getICCProfile().empty()) cout << "ICC ";
 
             cout << inputInfo->getPixelType() << " "
                  << "position="
@@ -427,19 +550,28 @@ int main(int argc, char** argv) {
         }
 
         // Get input image's position and size.
-        Diff2D imageSize(inputInfo->width(), inputInfo->height());
-        Diff2D imagePos = inputInfo->getPosition();
-        EnblendROI imageROI(imagePos, imageSize);
+        Rect2D imageROI(Point2D(inputInfo->getPosition()),
+                Size2D(inputInfo->width(), inputInfo->height()));
 
         if (inputFileNameIterator == inputFileNameList.begin()) {
             // The first input image.
             inputUnion = imageROI;
             isColor = inputInfo->isColor();
             pixelType = inputInfo->getPixelType();
+            iccProfile = inputInfo->getICCProfile();
+            if (!iccProfile.empty()) {
+                InputProfile = cmsOpenProfileFromMem(iccProfile.data(), iccProfile.size());
+                if (InputProfile == NULL) {
+                    cerr << endl << "enblend: error parsing ICC profile data from file\""
+                         << *inputFileNameIterator
+                         << "\"" << endl;
+                    exit(1);
+                }
+            }
         }
         else {
             // second and later images.
-            inputUnion.unite(imageROI, inputUnion);
+            inputUnion |= imageROI;
 
             if (isColor != inputInfo->isColor()) {
                 cerr << "enblend: Input image \""
@@ -459,6 +591,45 @@ int main(int argc, char** argv) {
                      << "." << endl;
                 exit(1);
             }
+            if (!std::equal(iccProfile.begin(), iccProfile.end(), inputInfo->getICCProfile().begin())) {
+                ImageImportInfo::ICCProfile mismatchProfile = inputInfo->getICCProfile();
+                cmsHPROFILE newProfile = NULL;
+                if (!mismatchProfile.empty()) {
+                    newProfile = cmsOpenProfileFromMem(mismatchProfile.data(), mismatchProfile.size());
+                    if (newProfile == NULL) {
+                        cerr << endl << "enblend: error parsing ICC profile data from file\""
+                             << *inputFileNameIterator
+                             << "\"" << endl;
+                        exit(1);
+                    }
+                }
+
+                cerr << endl << "enblend: Input image \""
+                     << *inputFileNameIterator
+                     << "\" has ";
+                if (newProfile) {
+                    cerr << " ICC profile \""
+                         << cmsTakeProductName(newProfile)
+                         << " "
+                         << cmsTakeProductDesc(newProfile)
+                         << "\"";
+                } else {
+                    cerr << " no ICC profile";
+                }
+                cerr << " but previous images have ";
+                if (InputProfile) {
+                    cerr << " ICC profile \""
+                         << cmsTakeProductName(InputProfile)
+                         << " "
+                         << cmsTakeProductDesc(InputProfile)
+                         << "\"." << endl;
+                } else {
+                    cerr << " no ICC profile." << endl;
+                }
+                cerr << "enblend: Blending images with different color spaces may have unexpected results."
+                     << endl;
+
+            }
         }
 
         inputFileNameIterator++;
@@ -466,10 +637,7 @@ int main(int argc, char** argv) {
 
     // Make sure that inputUnion is at least as big as given by the -f paramater.
     if (OutputSizeGiven) {
-        Diff2D ul(0, 0);
-        Diff2D lr(OutputWidthCmdLine, OutputHeightCmdLine);
-        EnblendROI givenSize(ul, lr);
-        inputUnion.unite(givenSize, inputUnion);
+        inputUnion |= Rect2D(Size2D(OutputWidthCmdLine, OutputHeightCmdLine));
     }
 
     // Create the Info for the output file.
@@ -479,37 +647,65 @@ int main(int argc, char** argv) {
     // Pixel type of the output image is the same as the input images.
     outputImageInfo.setPixelType(pixelType);
 
-    // Find the first ICC profile in the input images and copy it to the output image.
-    for (imageInfoIterator = imageInfoList.begin();
-            imageInfoIterator != imageInfoList.end();
-            ++imageInfoIterator) {
-        if ((*imageInfoIterator)->getICCProfileLength() > 0) {
-            outputImageInfo.setICCProfile(
-                    (*imageInfoIterator)->getICCProfileLength(),
-                    (*imageInfoIterator)->getICCProfile());
-            break;
+    // Set the output image ICC profile
+    outputImageInfo.setICCProfile(iccProfile);
+
+    if (UseCIECAM) {
+        if (InputProfile == NULL) {
+            cerr << "enblend: Input images do not have ICC profiles. Assuming sRGB." << endl;
+            InputProfile = cmsCreate_sRGBProfile();
+        }
+        XYZProfile = cmsCreateXYZProfile();
+
+        InputToXYZTransform = cmsCreateTransform(InputProfile, TYPE_RGB_DBL,
+                                                 XYZProfile, TYPE_XYZ_DBL,
+                                                 INTENT_PERCEPTUAL, cmsFLAGS_NOTPRECALC);
+        if (InputToXYZTransform == NULL) {
+            cerr << "enblend: Error building color transform from \""
+                 << cmsTakeProductName(InputProfile)
+                 << " "
+                 << cmsTakeProductDesc(InputProfile)
+                 << "\" to XYZ." << endl;
+            exit(1);
+        }
+
+        XYZToInputTransform = cmsCreateTransform(XYZProfile, TYPE_XYZ_DBL,
+                                                 InputProfile, TYPE_RGB_DBL,
+                                                 INTENT_PERCEPTUAL, cmsFLAGS_NOTPRECALC);
+        if (XYZToInputTransform == NULL) {
+            cerr << "enblend: Error building color transform from XYZ to \""
+                 << cmsTakeProductName(InputProfile)
+                 << " "
+                 << cmsTakeProductDesc(InputProfile)
+                 << "\"." << endl;
+            exit(1);
+        }
+
+        // P2 Viewing Conditions: D50, 500 lumens
+        ViewingConditions.whitePoint.X = 96.42;
+        ViewingConditions.whitePoint.Y = 100.0;
+        ViewingConditions.whitePoint.Z = 82.49;
+        ViewingConditions.Yb = 20.0;
+        ViewingConditions.La = 31.83;
+        ViewingConditions.surround = AVG_SURROUND;
+        ViewingConditions.D_value = 1.0;
+
+        CIECAMTransform = cmsCIECAM02Init(&ViewingConditions);
+        if (!CIECAMTransform) {
+            cerr << endl << "enblend: Error initializing CIECAM02 transform." << endl;
+            exit(1);
         }
     }
 
     // The size of the output image.
     if (Verbose > VERBOSE_INPUT_UNION_SIZE_MESSAGES) {
-        Diff2D ul = inputUnion.getUL();
-        Diff2D lr = inputUnion.getLR();
-        Diff2D outputImageSize = inputUnion.size();
-        cout << "Output image size: "
-             << "(" << ul.x << ", " << ul.y << ") -> "
-             << "(" << lr.x << ", " << lr.y << ") = ("
-             << outputImageSize.x
-             << " x "
-             << outputImageSize.y
-             << ")"
-             << endl;
+        cout << "Output image size: " << inputUnion << endl;
     }
 
     // Set the output image position and resolution.
-    outputImageInfo.setXResolution(150.0);
-    outputImageInfo.setYResolution(150.0);
-    outputImageInfo.setPosition(inputUnion.getUL());
+    outputImageInfo.setXResolution(300.0);
+    outputImageInfo.setYResolution(300.0);
+    outputImageInfo.setPosition(inputUnion.upperLeft());
 
     // Sanity check on the output image file.
     try {
@@ -526,32 +722,60 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    // Sanity check on the LoadMaskFileName
+    if (LoadMaskFileName) try {
+        ImageImportInfo maskInfo(LoadMaskFileName);
+    } catch (StdException& e) {
+        cerr << endl << "enblend: error opening load-mask input file \""
+             << LoadMaskFileName << "\":"
+             << endl << e.what()
+             << endl;
+        exit(1);
+    }
+
+    // Sanity check on the SaveMaskFileName
+    if (SaveMaskFileName) try {
+        ImageExportInfo maskInfo(SaveMaskFileName);
+        encoder(maskInfo);
+    } catch (StdException& e) {
+        cerr << endl << "enblend: error opening save-mask output file \""
+             << SaveMaskFileName << "\":"
+             << endl << e.what()
+             << endl;
+        exit(1);
+    }
+
+    // Sanity check on the VisualizeMaskFileName
+    if (VisualizeMaskFileName) try {
+        ImageExportInfo maskInfo(VisualizeMaskFileName);
+        encoder(maskInfo);
+    } catch (StdException& e) {
+        cerr << endl << "enblend: error opening visualize output file \""
+             << VisualizeMaskFileName << "\":"
+             << endl << e.what()
+             << endl;
+        exit(1);
+    }
+
+    if (VisualizeMaskFileName && !OptimizeMask) {
+        cerr << endl << "enblend: --visualize does nothing without --optimize."
+             << endl;
+    }
+
     // Invoke templatized blender.
     try {
-    #ifdef ENBLEND_CACHE_IMAGES
         if (isColor) {
-            if (strcmp(pixelType, "UINT8") == 0) {
-                enblendMain<BRGBCFImage, SRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT16") == 0) {
-                enblendMain<SRGBCFImage, IRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT16") == 0) {
-                enblendMain<USRGBCFImage, IRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT32") == 0) {
-                enblendMain<IRGBCFImage, DRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT32") == 0) {
-                enblendMain<UIRGBCFImage, DRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "FLOAT") == 0) {
-                enblendMain<FRGBCFImage, DRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "DOUBLE") == 0) {
-                enblendMain<DRGBCFImage, DRGBCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else {
+            if (strcmp(pixelType,      "UINT8" ) == 0) enblendMain<RGBValue<UInt8 > >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT8"  ) == 0) enblendMain<RGBValue<Int8  > >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "UINT16") == 0) enblendMain<RGBValue<UInt16> >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT16" ) == 0) enblendMain<RGBValue<Int16 > >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "UINT32") == 0) enblendMain<RGBValue<UInt32> >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT32" ) == 0) enblendMain<RGBValue<Int32 > >(imageInfoList, outputImageInfo, inputUnion);
+            //else if (strcmp(pixelType, "UINT64") == 0) enblendMain<RGBValue<UInt64> >(imageInfoList, outputImageInfo, inputUnion);
+            //else if (strcmp(pixelType, "INT64" ) == 0) enblendMain<RGBValue<Int64 > >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "FLOAT" ) == 0) enblendMain<RGBValue<float > >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "DOUBLE") == 0) enblendMain<RGBValue<double> >(imageInfoList, outputImageInfo, inputUnion);
+            else {
                 cerr << "enblend: images with pixel type \""
                      << pixelType
                      << "\" are not supported."
@@ -559,28 +783,17 @@ int main(int argc, char** argv) {
                 exit(1);
             }
         } else {
-            if (strcmp(pixelType, "UINT8") == 0) {
-                enblendMain<BCFImage, SCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT16") == 0) {
-                enblendMain<SCFImage, ICFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT16") == 0) {
-                enblendMain<USCFImage, ICFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT32") == 0) {
-                enblendMain<ICFImage, DCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT32") == 0) {
-                enblendMain<UICFImage, DCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "FLOAT") == 0) {
-                enblendMain<FCFImage, DCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "DOUBLE") == 0) {
-                enblendMain<DCFImage, DCFImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else {
+            if (strcmp(pixelType,      "UINT8" ) == 0) enblendMain<UInt8 >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT8"  ) == 0) enblendMain<Int8  >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "UINT16") == 0) enblendMain<UInt16>(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT16" ) == 0) enblendMain<Int16 >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "UINT32") == 0) enblendMain<UInt32>(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "INT32" ) == 0) enblendMain<Int32 >(imageInfoList, outputImageInfo, inputUnion);
+            //else if (strcmp(pixelType, "UINT64") == 0) enblendMain<UInt64>(imageInfoList, outputImageInfo, inputUnion);
+            //else if (strcmp(pixelType, "INT64" ) == 0) enblendMain<Int64 >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "FLOAT" ) == 0) enblendMain<float >(imageInfoList, outputImageInfo, inputUnion);
+            else if (strcmp(pixelType, "DOUBLE") == 0) enblendMain<double>(imageInfoList, outputImageInfo, inputUnion);
+            else {
                 cerr << "enblend: images with pixel type \""
                      << pixelType
                      << "\" are not supported."
@@ -588,67 +801,6 @@ int main(int argc, char** argv) {
                 exit(1);
             }
         }
-    #else
-        if (isColor) {
-            if (strcmp(pixelType, "UINT8") == 0) {
-                enblendMain<BRGBImage, SRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT16") == 0) {
-                enblendMain<SRGBImage, IRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT16") == 0) {
-                enblendMain<USRGBImage, IRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT32") == 0) {
-                enblendMain<IRGBImage, DRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT32") == 0) {
-                enblendMain<UIRGBImage, DRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "FLOAT") == 0) {
-                enblendMain<FRGBImage, DRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "DOUBLE") == 0) {
-                enblendMain<DRGBImage, DRGBImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else {
-                cerr << "enblend: images with pixel type \""
-                     << pixelType
-                     << "\" are not supported."
-                     << endl;
-                exit(1);
-            }
-        } else {
-            if (strcmp(pixelType, "UINT8") == 0) {
-                enblendMain<BImage, SImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT16") == 0) {
-                enblendMain<SImage, IImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT16") == 0) {
-                enblendMain<USImage, IImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "INT32") == 0) {
-                enblendMain<IImage, DImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "UINT32") == 0) {
-                enblendMain<UIImage, DImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "FLOAT") == 0) {
-                enblendMain<FImage, DImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else if (strcmp(pixelType, "DOUBLE") == 0) {
-                enblendMain<DImage, DImage>(
-                        imageInfoList, outputImageInfo, inputUnion);
-            } else {
-                cerr << "enblend: images with pixel type \""
-                     << pixelType
-                     << "\" are not supported."
-                     << endl;
-                exit(1);
-            }
-        }
-    #endif
 
         // delete entries in imageInfoList, in case
         // enblend loop returned early.
@@ -670,6 +822,20 @@ int main(int argc, char** argv) {
              << endl;
         exit(1);
     }
+
+    if (CIECAMTransform) cmsCIECAM02Done(CIECAMTransform);
+    if (InputToXYZTransform) cmsDeleteTransform(InputToXYZTransform);
+    if (XYZToInputTransform) cmsDeleteTransform(XYZToInputTransform);
+    if (XYZProfile) cmsCloseProfile(XYZProfile);
+    if (InputProfile) cmsCloseProfile(InputProfile);
+
+    if (UseGPU) {
+        wrapupGPU();
+    }
+
+    delete[] SaveMaskFileName;
+    delete[] LoadMaskFileName;
+    delete[] VisualizeMaskFileName;
 
     // Success.
     return 0;
