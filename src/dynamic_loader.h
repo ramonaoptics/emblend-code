@@ -227,7 +227,7 @@ public:
             throw super::error("not open");
 
         }
-        void* symbol=GetProcAddress(handle_, symbol_name.c_str());
+        void* symbol = (void*) GetProcAddress(handle_, symbol_name.c_str());
         if (symbol == NULL)
         {
             throw super::error(GetLastErrorString());
