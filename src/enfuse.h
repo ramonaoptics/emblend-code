@@ -665,10 +665,8 @@ protected:
 
 
 template <typename InputType, typename InputAccessor, typename ResultType>
-class ExposureFunctor {
+class ExposureFunctor : public std::unary_function<InputType, ResultType> {
 public:
-    typedef ResultType result_type;
-
     ExposureFunctor(double weight, const ExposureWeight* weight_function, const InputAccessor& a) :
         weight_(weight), weight_function_(weight_function), acc_(a) {}
 
@@ -698,10 +696,8 @@ protected:
 
 
 template <typename InputType, typename InputAccessor, typename ResultType>
-class CutoffExposureFunctor {
+class CutoffExposureFunctor : public std::unary_function<InputType, ResultType> {
 public:
-    typedef ResultType result_type;
-
     CutoffExposureFunctor(double weight, const ExposureWeight* weight_function, InputAccessor a,
                           const AlternativePercentage& lc, const AlternativePercentage& uc,
                           InputAccessor lca, InputAccessor uca) :
@@ -771,10 +767,8 @@ protected:
 
 
 template <typename InputType, typename ResultType>
-class SaturationFunctor {
+class SaturationFunctor : public std::unary_function<InputType, ResultType> {
 public:
-    typedef ResultType result_type;
-
     SaturationFunctor(double w) : weight(w) {}
 
     inline ResultType operator()(const InputType& a) const {
@@ -823,10 +817,8 @@ protected:
 
 
 template <typename InputType, typename ScaleType, typename ResultType>
-class ContrastFunctor {
+class ContrastFunctor : public std::unary_function<InputType, ResultType> {
 public:
-    typedef ResultType result_type;
-
     ContrastFunctor(double w) : weight(w) {}
 
     inline ResultType operator()(const InputType& a) const {
@@ -874,7 +866,7 @@ protected:
 
 
 template <typename InputType, typename ResultType>
-class EntropyFunctor {
+class EntropyFunctor : public std::unary_function<InputType, ResultType> {
 public:
     typedef vigra::NumericTraits<InputType> InputTraits;
     typedef vigra::NumericTraits<ResultType> ResultTraits;
@@ -936,7 +928,7 @@ struct MagnitudeAccessor
 
 
 template <typename InputType, typename ResultType>
-class ClampingFunctor
+class ClampingFunctor : public std::unary_function<InputType, ResultType>
 {
 public:
     typedef vigra::NumericTraits<InputType> InputTraits;
@@ -1152,23 +1144,29 @@ void enfuseMask(vigra::triple<typename ImageType::const_traverser, typename Imag
         }
 #endif
         ContrastFunctor<LongScalarType, ScalarType, MaskValueType> cf(WContrast);
-        // Anticipated Change: Replace unintuitive bind expression (again) with
-        // [&cf](ScalarType x, const MaskValueType& y) {return cf(x) + y;}
+#if defined(__clang__)
         vigra::omp::combineTwoImagesIf(srcImageRange(grad), result, mask, result,
                                        std::bind(std::plus<MaskValueType>(),
                                                  std::bind(cf, std::placeholders::_1),
                                                  std::placeholders::_2));
+#else
+        vigra::omp::combineTwoImagesIf(srcImageRange(grad), result, mask, result,
+                                       [&cf](ScalarType x, const MaskValueType& y) {return cf(x) + y;});
+#endif
     }
 
     // Saturation
     if (WSaturation > 0.0) {
         SaturationFunctor<ImageValueType, MaskValueType> sf(WSaturation);
-        // Anticipated Change:  Replace unintuitive bind expression (again) with
-        // [&sf](ImageValueType x, const MaskValueType& y) {return sf(x) + y;}
+#if defined(__clang__)
         vigra::omp::combineTwoImagesIf(src, result, mask, result,
                                        std::bind(std::plus<MaskValueType>(),
                                                  std::bind(sf, std::placeholders::_1),
                                                  std::placeholders::_2));
+#else
+        vigra::omp::combineTwoImagesIf(src, result, mask, result,
+                                       [&sf](ImageValueType x, const MaskValueType& y) {return sf(x) + y;});
+#endif
     }
 
     // Entropy
@@ -1224,12 +1222,15 @@ void enfuseMask(vigra::triple<typename ImageType::const_traverser, typename Imag
         }
 
         EntropyFunctor<PixelType, MaskValueType> ef(WEntropy);
-        // Anticipated Change:  Replace unintuitive bind expression (again) with
-        // [&ef](PixelType x, const MaskValueType& y) {return ef(x) + y;}
+#if defined(__clang__)
         vigra::omp::combineTwoImagesIf(srcImageRange(entropy), result, mask, result,
                                        std::bind(std::plus<MaskValueType>(),
                                                  std::bind(ef, std::placeholders::_1),
                                                  std::placeholders::_2));
+#else
+        vigra::omp::combineTwoImagesIf(srcImageRange(entropy), result, mask, result,
+                                       [&ef](PixelType x, const MaskValueType& y) {return ef(x) + y;});
+#endif
     }
 };
 
