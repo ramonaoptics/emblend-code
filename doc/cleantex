@@ -40,6 +40,12 @@ sub replace {
         # TeX inline math demimiters go away
         $line =~ s/\$//g;
 
+        # Dutifully applied quotation marks become the profane
+        # version.  If we are sure to write out Unicode, we could use
+        # guillemets.
+        $line =~ s/``/"/g;
+        $line =~ s/''/"/g;
+
         # Remove macro call remembering that we had to double backslashes
         $line =~ s/\\\\[A-Za-z]*//g;
 
