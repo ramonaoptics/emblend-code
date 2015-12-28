@@ -454,11 +454,13 @@ enhanced :=
   \item[\itempar{channel-mixer:\metavar{RED-WEIGHT}:\feasiblebreak
     \metavar{GREEN-WEIGHT}:\feasiblebreak\metavar{BLUE-WEIGHT}}]\itemend
     Weight the channels as given.
-    \begin{align*}
-      Y = & \metavar{RED-WEIGHT} \times R  + \\
-      & \metavar{GREEN-WEIGHT} \times G + \\
-      & \metavar{BLUE-WEIGHT} \times B
-    \end{align*}
+    \[
+    \begin{array}{r@{\hspace{1ex}}c@{\hspace{1ex}}l@{\hspace{1ex}}c@{\hspace{1ex}}cc}
+      Y & = & \metavar{RED-WEIGHT}   & \times & R & + \\
+        &   & \metavar{GREEN-WEIGHT} & \times & G & + \\
+        &   & \metavar{BLUE-WEIGHT}  & \times & B &
+    \end{array}
+    \]
 
     The weights are automatically normalized to one, so
 
@@ -513,7 +515,6 @@ enhanced :=
     \gensee{pl-star gray projector@\code{pl-star} gray projector}%
            {gray projector, \code{pl-star}}%
     \genidx{RGB'-L*a*b* conversion@\acronym{RGB'}-\acronym{L*a*b*} conversion}%
-    \gensee{conversion!RGB'-L*a*b*@\acronym{RGB'}-\acronym{L*a*b*} conversion}%
   \item[pl-star]\itemend
     Use the L-channel of the L*a*b*-conversion of the image as its grayscale representation.
     This is a useful projector for gamma-corrected data.  It reveals minute contrast variations
