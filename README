@@ -518,38 +518,8 @@ build options.
 *** General
 
 There are two different archives: one with 32-bit executables, the
-other one with 64-bit executables.
-
-
-**** 32-bit versions
-
-The 32-bit archive contains two different versions of Enblend and
-Enfuse:
-
-
-***** enblend.exe/enfuse.exe
-
-These executables are the standard release.  They are using one
-processor core and the ImageCache (to allow for processing of very big
-images).
-
-
-***** enblend_openmp.exe/enfuse_openmp.exe
-
-These executables can utilize several cores of modern multi-core
-processors and are therefore significantly faster on modern
-processors.  But they may fail on very big images because they are
-working without the ImageCache.  In this case, please switch to the
-standard version.
-
-
-**** 64-bit version
-
-The 64-bit archive contains multi-threaded versions of Enblend and
-Enfuse, both compiled without the ImageCache.
-
-All variants can utilize a modern graphic card to accelerate the
-optimizing of the seam line between two images.
+other one with 64-bit executables. Both variants are compiled with
+multi-threaded support (via OpenMP).
 
 
 *** Compiling on Windows
@@ -558,9 +528,9 @@ optimizing of the seam line between two images.
 
 You will need to following tools for compiling:
 
-- MS Visual C++ 2010, Express Edition suffices or
-  MS Visual C++ 2012, Express for Desktop suffices
-- CMake, at least version 2.6, though version 2.8 is preferred
+- MS Visual C++ 2015, works also with Community Edition
+  (older compiler may work, but have not been tested)
+- CMake, at least version 2.8
 - Perl, e.g. ActiveState Perl
 
 CMake expects all sources and libraries in one folder.  So, create a
@@ -569,22 +539,24 @@ also put all libraries into this folder.
 
 You need the following libraries for reading and writing different
 image formats.  We state the version and the folder name of the
-libraries used as of December 2009 in square brackets.
+libraries used as of March 2016 in square brackets.
 
-- libtiff  [libtiff-4.0.3]
-- zlib, required by libtiff  [1.2.7 in zlib]
-- libjpeg (optional)  [jpeg-8d]
-- libpng (optional)  [libpng-1.5.12]
+- libtiff  [libtiff-4.0.6 in tiff]
+- zlib, required by libtiff  [1.2.8 in zlib]
+- libjpeg (optional)  [jpeg-9b]
+- libpng (optional)  [libpng-1.6.21 in libpng]
 - OpenEXR and IlmBase (optional), compiled libraries are
-  expected in folder "Deploy"  [OpenEXR-1.7.1 and IlmBase-1.0.3]
+  expected in folder "Deploy"  [OpenEXR-2.2.0 and IlmBase-2.2.0]
 - vigra, required, should be compiled against same
   libtifff, libjpeg, libpng and OpenEXR as used for Enblend/Enfuse
-  [1.8.0 in vigra]
+  [1.10.0 in vigra]
 
 Enblend/Enfuse also depend on the following libraries:
 
-- Boost  [1.51 in boost_1_51_0]
+- Boost  [1.60 in boost_1_60_0]
     - Only header files are used by default.
+    - Optionally, Enblend/Enfuse can use the Filesystem Library.
+      However, this library needs to compiled against STLport.
 - Little-CMS2  [2.4 in lcm2-2.4]
 
 
@@ -618,11 +590,12 @@ Creates executable which make use of the advanced features (SSE2) of
 modern processors.
 
 
-***** DOC=OFF
+***** DOC=on/OFF
 
-Set the variable DOC to off.  Building the documentation requires more
-tools and not all of them are available for Windows in the current
-version.
+Building the documentation works also on Windows.  It requires more
+tools (see above).  Some tools have several different variants for
+Windows available, but not all work with Enblend/Enfuse documentation.
+If you experience errors try another variant or version.
 
 
 **** Compile (cont.)
