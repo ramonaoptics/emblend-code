@@ -9,81 +9,147 @@
 # Redistribution and use is allowed according to the terms of the BSD license.
 # For details see the accompanying COPYING-CMAKE-SCRIPTS file.
 
-MACRO(FIND_LIBRARY_WITH_DEBUG var_name)
-  IF(NOT WIN32)
-    FIND_LIBRARY(${var_name} ${ARGN})
-  ELSE(NOT WIN32)
-    PARSE_ARGUMENTS(FIND_LIB_WITH_DEBUG "WIN32_DEBUG_POSTFIX;WIN32_DEBUG_PATH_SUFFIX;WIN32_RELEASE_PATH_SUFFIX;NAMES;PATHS" "" ${ARGN})
+MACRO(FIND_LIBRARY_WITH_DEBUG var_name win32_dbg_postfix_name dgb_postfix libname)
 
-    IF(NOT FIND_LIB_WITH_DEBUG_NAMES)
-      LIST(GET FIND_LIB_WITH_DEBUG_DEFAULT_ARGS 0 FIND_LIB_WITH_DEBUG_NAMES)
-	  LIST(REMOVE_AT FIND_LIB_WITH_DEBUG_DEFAULT_ARGS 0)
-    ENDIF(NOT FIND_LIB_WITH_DEBUG_NAMES)
-  
-    IF(NOT FIND_LIB_WITH_DEBUG_PATHS)
-      LIST(GET FIND_LIB_WITH_DEBUG_DEFAULT_ARGS 0 FIND_LIB_WITH_DEBUG_PATHS)
-    ENDIF(NOT FIND_LIB_WITH_DEBUG_PATHS)
-	
-	IF(NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_POSTFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX)
-	  FIND_LIBRARY(${var_name} NAMES ${FIND_LIB_WITH_DEBUG_NAMES} PATHS ${FIND_LIB_WITH_DEBUG_PATHS})
-	ELSE(NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_POSTFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX)
-	  SET(libpaths_release "")
-	  SET(libpaths_debug "")
-	  
-	  SET(libnames_release "")
-	  SET(libnames_debug "")
-	  
-	  FOREACH(libpath ${FIND_LIB_WITH_DEBUG_PATHS})
-        FOREACH(rel_suffix ${FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX})
-		  LIST(APPEND libpaths_release "${libpath}/${rel_suffix}")
-	    ENDFOREACH(rel_suffix ${FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX})
-		IF(NOT DEFINED ${FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX})
-          LIST(APPEND libpaths_release "${libpath}")
-		ENDIF(NOT DEFINED ${FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX})
+  IF((NOT "${win32_dbg_postfix_name}" STREQUAL "WIN32_DEBUG_POSTFIX") AND (NOT VCPKG_TOOLCHAIN))
 
-		FOREACH(deb_suffix ${FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX})
-		  LIST(APPEND libpaths_debug "${libpath}/${deb_suffix}")
-		ENDFOREACH(deb_suffix ${FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX})
-		IF(NOT DEFINED ${FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX})
-		  LIST(APPEND libpaths_debug "${libpath}")
-		ENDIF(NOT DEFINED ${FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX})
-	  ENDFOREACH(libpath ${FIND_LIB_WITH_DEBUG_PATHS})
-	  
- 	  FOREACH(libname ${FIND_LIB_WITH_DEBUG_NAMES})
-	    LIST(APPEND libnames_release "${libname}")
-		LIST(APPEND libnames_debug "${libname}${FIND_LIB_WITH_DEBUG_WIN32_DEBUG_POSTFIX}")
- 	  ENDFOREACH(libname ${FIND_LIB_WITH_DEBUG_NAMES})
-	  
-      # search the release lib
-      find_library_for_cpu(${var_name}_RELEASE
-                   NAMES ${libnames_release}
-				   PATHS ${libpaths_release}
-      )
+     # no WIN32_DEBUG_POSTFIX -> simply pass all arguments to FIND_LIBRARY
+     FIND_LIBRARY(${var_name}
+                  ${win32_dbg_postfix_name}
+                  ${dgb_postfix}
+                  ${libname}
+                  ${ARGN}
+     )
 
-      # search the debug lib
-      find_library_for_cpu(${var_name}_DEBUG
-                   NAMES ${libnames_debug}
-                   PATHS ${libpaths_debug}
-      )
+  ELSE()
+
+    IF(NOT WIN32)
+      # on non-win32 we don't need to take care about WIN32_DEBUG_POSTFIX
+
+      FIND_LIBRARY(${var_name} ${libname} ${ARGN})
+
+    ELSE(NOT WIN32)
+
+      # 1. get all possible libnames
+      IF(VCPKG_TOOLCHAIN AND (NOT "${win32_dbg_postfix_name}" STREQUAL "WIN32_DEBUG_POSTFIX"))
+        SET(DBG_POSTFIX "d")
+        IF("${win32_dbg_postfix_name}" STREQUAL "NAMES")
+          UNSET(SINGLE_LIBNAME)
+          SET(args ${dgb_postfix})
+          LIST(APPEND args ${libname})
+          LIST(APPEND args ${ARGN})
+        ELSE()
+          SET(SINGLE_LIBNAME "${win32_dbg_postfix_name}")
+          SET(args ${libname})
+          LIST(APPEND args ${ARGN})
+        ENDIF()
+      ELSE()
+        SET(DBG_POSTFIX ${dgb_postfix})
+        IF("${libname}" STREQUAL "NAMES")
+          UNSET(SINGLE_LIBNAME)
+        ELSE()
+          SET(SINGLE_LIBNAME "${libname}")
+        ENDIF()
+        SET(args ${ARGN})
+      ENDIF()
+      SET(newargs "")
+      SET(libnames_release "")
+      SET(libnames_debug "")
+
+      LIST(LENGTH args listCount)
+
+      IF(NOT SINGLE_LIBNAME)
+        SET(append_rest 0)
+        LIST(APPEND args " ")
+
+        FOREACH(i RANGE ${listCount})
+          LIST(GET args ${i} val)
+
+          IF(append_rest)
+            LIST(APPEND newargs ${val})
+          ELSE(append_rest)
+            IF("${val}" STREQUAL "PATHS")
+              # LIST(APPEND newargs ${val})
+              SET(append_rest 1)
+            ELSE("${val}" STREQUAL "PATHS")
+              LIST(APPEND libnames_release "${val}")
+              LIST(APPEND libnames_debug   "${val}${DBG_POSTFIX}")
+              IF(VCPKG_TOOLCHAIN)
+                # in VCPKG the debug library does often not contain a postfix, 
+                # so search also for this variant
+                LIST(APPEND libnames_debug "${val}")
+              ENDIF()
+            ENDIF("${val}" STREQUAL "PATHS")
+          ENDIF(append_rest)
+
+        ENDFOREACH(i)
+
+      ELSE()
+
+        # just one name
+        LIST(APPEND libnames_release "${SINGLE_LIBNAME}")
+        LIST(APPEND libnames_debug   "${SINGLE_LIBNAME}${DBG_POSTFIX}")
+        IF(VCPKG_TOOLCHAIN)
+          # in VCPKG the debug library does often not contain a postfix, 
+          # so search also for this variant
+          LIST(APPEND libnames_debug "${SINGLE_LIBNAME}")
+        ENDIF()
+
+        SET(newargs ${args})
+
+      ENDIF()
+
+      # search the release and debug lib
+      IF(VCPKG_TOOLCHAIN)
+        FIND_LIBRARY(${var_name}_RELEASE
+                     NAMES ${libnames_release}
+                     PATHS ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib
+                     NO_DEFAULT_PATH
+          )
+        FIND_LIBRARY(${var_name}_DEBUG
+                     NAMES ${libnames_debug}
+                     PATHS ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/lib
+                     ${newargs}
+                     NO_DEFAULT_PATH
+          )
+      ELSE()
+        FIND_LIBRARY(${var_name}_RELEASE
+                     NAMES ${libnames_release}
+                     ${newargs}
+        )
+        FIND_LIBRARY(${var_name}_DEBUG
+                     NAMES ${libnames_debug}
+                     ${newargs}
+        )
+      ENDIF()
 
       IF(${var_name}_RELEASE AND ${var_name}_DEBUG)
+
         # both libs found
         SET(${var_name} optimized ${${var_name}_RELEASE}
                         debug     ${${var_name}_DEBUG})
+
       ELSE(${var_name}_RELEASE AND ${var_name}_DEBUG)
+
         IF(${var_name}_RELEASE)
+
           # only release found
           SET(${var_name} ${${var_name}_RELEASE})
+
         ELSE(${var_name}_RELEASE)
+
           # only debug (or nothing) found
           SET(${var_name} ${${var_name}_DEBUG})
+
         ENDIF(${var_name}_RELEASE)
+       
       ENDIF(${var_name}_RELEASE AND ${var_name}_DEBUG)
 
       MARK_AS_ADVANCED(${var_name}_RELEASE)
       MARK_AS_ADVANCED(${var_name}_DEBUG)
-	  
-	ENDIF(NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_POSTFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_DEBUG_PATH_SUFFIX AND NOT FIND_LIB_WITH_DEBUG_WIN32_RELEASE_PATH_SUFFIX)
-  ENDIF(NOT WIN32)
-	
+
+    ENDIF(NOT WIN32)
+
+  ENDIF()
+
 ENDMACRO(FIND_LIBRARY_WITH_DEBUG)

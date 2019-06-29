@@ -24,9 +24,9 @@ FIND_PATH(JPEG_INCLUDE_DIR jpeglib.h
   ${SOURCE_BASE_DIR}/jpeg-7
 )
 
-include(FindLibraryForCPU)
+include(FindLibraryWithDebug)
 
-find_library_for_cpu(JPEG_LIBRARIES
+find_library_with_debug(JPEG_LIBRARIES
   WIN32_DEBUG_POSTFIX d
   NAMES jpeg libjpeg
   PATHS 
