@@ -1340,7 +1340,6 @@ namespace enblend
         IMAGETYPE<GradientPixelType> gradientY(size);
         IMAGETYPE<GraphPixelType> graphImg(size + size + vigra::Diff2D(1, 1));
 
-        std::vector<vigra::Point2D>* dualPath = nullptr;
         std::vector<vigra::Point2D> totalDualPath;
         vigra::Point2D intermediatePoint;
         CheckpointPixels srcDestPoints;
@@ -1460,7 +1459,7 @@ namespace enblend
             std::cout << "Running graph-cut: " << intermediatePoint << ":" << *i << std::endl;
 #endif
 
-            dualPath = A_star<IMAGETYPE<GraphPixelType>, IMAGETYPE<GradientPixelType>, BasePixelType>
+            std::vector<vigra::Point2D>* dualPath = A_star<IMAGETYPE<GraphPixelType>, IMAGETYPE<GradientPixelType>, BasePixelType>
                 (vigra::Point2D(-10, -10), vigra::Point2D(-20, -20), &intermediateGraphImg, &gradientX,
                  &gradientY, graphsize - vigra::Diff2D(1, 1), &srcDestPoints, &visited);
 
@@ -1471,6 +1470,7 @@ namespace enblend
                     totalDualPath.push_back(*j);
                 }
             }
+            delete dualPath;
 
             vigra::copyImage(srcImageRange(graphImg), destImage(intermediateGraphImg));
             intermediatePoint = *i;
@@ -1481,7 +1481,6 @@ namespace enblend
              dest_upperleft, da, totalDualPath, iBB);
 
         delete intermediatePointList;
-        delete dualPath;
     }
 } /* namespace enblend */
 
