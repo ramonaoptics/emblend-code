@@ -76,7 +76,7 @@ ENDIF (NOT WIN32 OR MINGW)
   
   find_library_with_debug(OPENEXR_ILMIMF_LIBRARY 
     WIN32_DEBUG_POSTFIX d
-    NAMES IlmIlm-2_3 IlmImf-2_2 IlmImf 
+    NAMES IlmImf-2_3 IlmImf-2_2 IlmImf 
     PATHS
       ${_OPENEXRLinkDir}
       ${SYSTEM_LIB_DIRS}
