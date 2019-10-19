@@ -311,35 +311,6 @@ namespace enblend
         return interPointList;
     }
 
-
-    template <typename ImageType>
-    class CostComparer
-    {
-    public:
-        CostComparer(const ImageType* image) : img(image) {}
-
-        bool operator()(const vigra::Point2D& a, const vigra::Point2D& b) const
-        {
-            if (a == vigra::Point2D(-20, -20)) {
-                return totalScore > (*img)[b];
-            } else if (b == vigra::Point2D(-20, -20)) {
-                return (*img)[a] > totalScore;
-            }
-
-            return (*img)[a] > (*img)[b];
-        }
-
-        void setTotalScore(long s)
-        {
-            totalScore = s;
-        }
-
-    protected:
-        const ImageType* img;
-        long totalScore;
-    };
-
-
     template<class MaskPixelType>
     struct OutputLabelingFunctor
     {
@@ -576,11 +547,20 @@ namespace enblend
            vigra::Diff2D bounds, CheckpointPixels* srcDestPoints, std::unordered_set<vigra::Point2D, pointHash>* visited)
     {
         MaskPixelType zeroVal = vigra::NumericTraits<MaskPixelType>::zero();
-        typedef std::priority_queue<vigra::Point2D, std::vector<vigra::Point2D>, CostComparer<ImageType> > Queue;
-        CostComparer<ImageType> costcomp(img);
-        Queue* openset = new Queue(costcomp);
         long score = 0;
         long totalScore = 0;
+        auto costcomparer = [&img, &totalScore](const vigra::Point2D& a, const vigra::Point2D& b)->bool {
+            if (a == vigra::Point2D(-20, -20)) {
+                return totalScore > (*img)[b];
+            } else {
+                if (b == vigra::Point2D(-20, -20)) {
+                    return (*img)[a] > totalScore;
+                };
+            };
+            return (*img)[a] > (*img)[b];
+        };
+        typedef std::priority_queue<vigra::Point2D, std::vector<vigra::Point2D>, decltype(costcomparer)> Queue;
+        Queue * openset = new Queue(costcomparer);
         long iterCount = 0;
         int gradientA;
         int gradientB;
@@ -668,7 +648,6 @@ namespace enblend
                             if (neighbour == vigra::Point2D(-20, -20)) {
                                 totalScore = score;
                                 destNeighbour = current;
-                                costcomp.setTotalScore(totalScore);
                             } else {
                                 (*img)[neighbour(1, 1)] &= BIT_MASK_OPEN;
                                 (*img)[neighbour(1, 1)] += i;
