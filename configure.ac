@@ -151,9 +151,23 @@ AS_IF([test "$with_exiv2" = check -o "$with_exiv2" = yes],
                                          image->iptcData();]])],
                       [AC_MSG_RESULT(yes)
                        use_exiv2=yes
-                       AC_DEFINE(HAVE_EXIV2, 1, [Define if you have the exiv2 library])],
+                       AC_DEFINE(HAVE_EXIV2, 1, [Define if you have the Exiv2 library])],
                       [AC_MSG_RESULT(no)
                        LIBS="$SAVED_LIBS"])])
+if test "$use_exiv2" = yes; then
+  AC_MSG_CHECKING([whether Exiv2 library is sufficiently recent])
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <exiv2/image.hpp>]],
+                                  [[Exiv2::Image::UniquePtr p {nullptr}]])],
+                 AC_MSG_RESULT(yes),
+                 [AC_MSG_RESULT(no)
+                  use_exiv2=no
+                  LIBS="$SAVED_LIBS"
+                  if test "$with_exiv2" = check; then
+                    AC_MSG_WARN([Exiv2 was found, but it was not recent enough.])
+                  else
+                    AC_MSG_ERROR([Exiv2 was found, but it was not recent enough.])
+                  fi])
+fi
 
 AC_MSG_CHECKING([for support of partially static linking])
 original_LIBS="${LIBS}"

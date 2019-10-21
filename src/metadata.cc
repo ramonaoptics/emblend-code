@@ -171,10 +171,10 @@ namespace metadata
     }
 
 
-    Exiv2::Image::AutoPtr
+    Exiv2::Image::UniquePtr
     read(const std::string& an_image_filename)
     {
-        Exiv2::Image::AutoPtr meta {Exiv2::ImageFactory::open(an_image_filename)};
+        Exiv2::Image::UniquePtr meta {Exiv2::ImageFactory::open(an_image_filename)};
 
         if (meta.get() && meta->good())
         {
@@ -183,7 +183,7 @@ namespace metadata
         }
         else
         {
-            return Exiv2::Image::AutoPtr(nullptr);
+            return Exiv2::Image::UniquePtr(nullptr);
         }
     }
 
@@ -193,7 +193,7 @@ namespace metadata
           named_meta_array::const_iterator some_named_meta_begin,
           named_meta_array::const_iterator some_named_meta_end)
     {
-        Exiv2::Image::AutoPtr output_meta {Exiv2::ImageFactory::open(an_image_filename)};
+        Exiv2::Image::UniquePtr output_meta {Exiv2::ImageFactory::open(an_image_filename)};
 
         if (output_meta.get() && output_meta->good())
         {

@@ -50,7 +50,7 @@ namespace metadata
 
     class Named
     {
-        typedef Exiv2::Image::AutoPtr::element_type* meta_pointer;
+        typedef Exiv2::Image::UniquePtr::element_type* meta_pointer;
 
     public:
         Named() = delete;
@@ -71,7 +71,7 @@ namespace metadata
     typedef std::vector<Named> named_meta_array;
 
 
-    Exiv2::Image::AutoPtr read(const std::string& an_image_filename);
+    Exiv2::Image::UniquePtr read(const std::string& an_image_filename);
 
     named_meta_array::const_iterator write(const std::string& an_image_filename,
                                            named_meta_array::const_iterator some_named_meta_begin,

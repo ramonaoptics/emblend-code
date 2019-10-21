@@ -100,7 +100,7 @@ void enblendMain(const FileNameList& anInputFileNameList,
     FileNameList::const_iterator inputFileNameIterator(anInputFileNameList.begin());
 
 #ifdef HAVE_EXIV2
-    typedef allocate::array<Exiv2::Image::AutoPtr> metadata_array;
+    typedef allocate::array<Exiv2::Image::UniquePtr> metadata_array;
     metadata_array input_metadata(anInputFileNameList.size());
     {
         FileNameList::const_iterator filename(anInputFileNameList.begin());
