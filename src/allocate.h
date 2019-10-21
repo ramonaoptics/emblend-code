@@ -23,7 +23,6 @@
 
 
 #include <iterator>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -37,23 +36,20 @@ namespace allocate
         {
         public:
             positional_hint() = delete;
-            explicit positional_hint(std::size_t a_position) : position_(a_position) {}
+            positional_hint(const char* a_message, std::size_t a_position) :
+                position_ {a_position}
+            {
+                message_.append(a_message);
+                message_.append(" at position ");
+                message_.append(std::to_string(position()));
+            }
+
+            const char* message() const {return message_.c_str();}
 
             std::size_t position() const {return position_;}
 
-            const char* append_location_to(const char* a_message) const
-            {
-                std::stringstream message;
-                message << a_message << " at position " << position();
-                return message.str().c_str();
-            }
-
-            const char* append_location_to(const std::string& a_message) const
-            {
-                return append_location_to(a_message.c_str());
-            }
-
         private:
+            std::string message_;
             const std::size_t position_;
         }; // class positional_hint
     } // namespace detail
@@ -64,12 +60,10 @@ namespace allocate
     public:
         not_initialized() = delete;
         explicit not_initialized(std::size_t an_uninitialized_position) :
-            detail::positional_hint(an_uninitialized_position) {}
+            detail::positional_hint {"uninitialized array element", an_uninitialized_position}
+        {}
 
-        virtual const char* what() const noexcept
-        {
-            return detail::positional_hint::append_location_to("uninitialized array element");
-        }
+        virtual const char* what() const noexcept {return detail::positional_hint::message();}
 
         std::size_t position() const {return detail::positional_hint::position();}
     }; // class not_initialized
@@ -80,12 +74,10 @@ namespace allocate
     public:
         already_initialized() = delete;
         explicit already_initialized(std::size_t an_uninitialized_position) :
-            detail::positional_hint(an_uninitialized_position) {}
+            detail::positional_hint {"array element already initialized", an_uninitialized_position}
+        {}
 
-        virtual const char* what() const noexcept
-        {
-            return detail::positional_hint::append_location_to("array element already initialized");
-        }
+        virtual const char* what() const noexcept {return detail::positional_hint::message();}
 
         std::size_t position() const {return detail::positional_hint::position();}
     }; // class already_initialized
@@ -96,14 +88,11 @@ namespace allocate
     public:
         out_of_range() = delete;
         out_of_range(std::size_t an_out_of_range_position, std::size_t a_size) :
-            detail::positional_hint(an_out_of_range_position), array_size_(a_size) {}
+            detail::positional_hint {"out of range access", an_out_of_range_position},
+            array_size_ {a_size}
+        {}
 
-        virtual const char* what() const noexcept
-        {
-            std::stringstream message;
-            message << "out of range (0.." << (array_size() - 1) << ") access";
-            return detail::positional_hint::append_location_to(message.str());
-        }
+        virtual const char* what() const noexcept {return detail::positional_hint::message();}
 
         std::size_t position() const {return detail::positional_hint::position();}
         std::size_t array_size() const {return array_size_;}
