@@ -50,6 +50,38 @@ GNU Make is required to build the project, because some of the
 Makefiles contain pattern rules.
 
 
+** Hints for the migration to C++17
+
+*** Compiler
+
+Some C++ compilers already default to the C++17 Standard, others may
+have to be put into a conforming mode of operation with, for example,
+    -std=gnu++17
+or
+    -std=c++17
+in CXXFLAGS.
+
+
+*** Little CMS2
+
+Depending on the specific C++ compiler and the particular version of
+the lcms2 library it may or may not be necessary to add
+        -DCMS_NO_REGISTER_KEYWORD
+to CPPFLAGS because in C++17 `register' is a deprecated and reserved
+keyword.
+
+Library lcms2 is a mandatory prerequisite for both Enblend and Enfuse.
+
+
+*** Exiv2
+
+A sufficiently recent Exiv2 library is required because C++17 has
+abandoned std::auto_ptr<>, which older versions of the library heavily
+rely on; newer versions use std::unique_ptr<>.
+
+Library exiv2 is optional (see `--with-exiv2').
+
+
 ** Tarball
 
         ./configure YOUR-OPTIONS-IF-ANY-GO-HERE
