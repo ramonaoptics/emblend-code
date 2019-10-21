@@ -408,7 +408,7 @@ namespace ocl
         template <typename t>
         typename std::add_const<t>::type get() const
         {
-            return std::as_const(static_cast<t>(super::base_address()));
+            return std::add_const_t<typename std::add_const<t>::type>(static_cast<t>(super::base_address()));
         }
     }; // class ScopedReadMap
 
