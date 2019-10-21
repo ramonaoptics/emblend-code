@@ -180,7 +180,7 @@ void localStdDevIf(SrcIterator src_ul, SrcIterator src_lr, SrcAccessor src_acc,
                 break;
             }
 
-            // Compute auxilliary values of next column
+            // Compute auxiliary values of next column
             SrcSumType sumInit = vigra::NumericTraits<SrcSumType>::zero();
             SrcSumType sumSqrInit = vigra::NumericTraits<SrcSumType>::zero();
             size_t nInit = 0;

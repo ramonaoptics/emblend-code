@@ -330,7 +330,7 @@ protected:
 
     // Dithering is used to fool the eye into seeing gradients that are finer
     // than the precision of the pixel type.
-    // This prevents the occurence of cleanly-bordered regions in the output where
+    // This prevents the occurrence of cleanly-bordered regions in the output where
     // the pixel values suddenly change from N to N+1.
     // Such regions are especially objectionable in the green channel of 8-bit images.
     double dither(const double& v) const
@@ -1842,7 +1842,7 @@ public:
                 std::cout <<
                     "\n" <<
                     "+ flexible_optimize_1d_2d: failed to reach optimizer goal " <<
-                    optimizer_goal << " -- only achived deltaE{1d} = " << delta_e_1d <<
+                    optimizer_goal << " -- only achieved deltaE{1d} = " << delta_e_1d <<
                     ", deltaE{2d} = " << delta_e_2d << "\n";
                 ciecam_detail::show_jch_rgb("+ flexible_optimize_1d_2d: initial", jch);
                 ciecam_detail::show_jch_rgb("+ flexible_optimize_1d_2d: final", &opt_jch);
@@ -1876,7 +1876,7 @@ public:
 
         // Implementation Notes
         //
-        //         New LittleCMS versions use "open color space" arithmetics, which means color
+        //         New LittleCMS versions use "open color space" arithmetic, which means color
         // coordinates can end up outside their domains, e.g. JCh cylinder or RGB cube.  We just
         // let LittleCMS chug along freewheeling as long as possible.  Right here, we must take
         // care of out-of-cube RGB values, because the array `rgb[3]' ends up as pixel in the

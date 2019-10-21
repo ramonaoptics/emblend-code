@@ -379,7 +379,7 @@ Released on December 13, 2009.
   ("--disable-image-cache").  Speedups of up to 30% have been reported
   on the amd64 architecture.
 
-- Enblend and Enfuse accept repsonse files in addition to literal
+- Enblend and Enfuse accept response files in addition to literal
   image files.  Response files contain lists of image filenames or
   names of other response files.
 
@@ -450,7 +450,7 @@ Released on December 13, 2009.
 - All Enfuse options have been converted to Enblend's option naming
   scheme.  This is, camel-casing has been replaced by lowercase plus
   dashes.  The new option name are more systematically constructed,
-  too.  The old options will completely dissapear in the next release,
+  too.  The old options will completely disappear in the next release,
   4.1.
 
                Old Option                New Option

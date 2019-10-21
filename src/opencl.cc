@@ -477,7 +477,7 @@ namespace ocl
     construct_search_path()
     {
         // We _always_ search a_filename along of some explicit, given
-        // path, never implicitly through CWD or the direcory of the
+        // path, never implicitly through CWD or the directory of the
         // binary.
         std::vector<std::string> paths;
 

@@ -306,7 +306,7 @@ canonicalizePath(const std::string& aPathname, bool keepDot)
 #else
     std::string result = removeDotDotsCxx(removeDotsCxx(aPathname));
 
-    // For compatability with the Boost implementation: Remove a
+    // For compatibility with the Boost implementation: Remove a
     // trailing PATH_SEPARATOR unless we reference the root directory.
     const size_t size = result.size();
     if (size >= 2 && result.substr(size - 1, 1) == PATH_SEPARATOR)

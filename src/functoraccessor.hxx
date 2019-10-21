@@ -405,7 +405,7 @@ public:
 /** An accessor to encapsulate write access to a multiband image,
     and move divide it into two images.
 
-    This is particulary useful, if a multiband image should be splitted
+    This is particularly useful, if a multiband image should be split
     into separate images during import operations. Then one doesn't
     need to create a temporary image.
 
@@ -424,7 +424,7 @@ public:
       - vector -> scalar, scalar
       - vector -> vector, scalar
 
-    This accessor is quite slow. It checks the vector indicies on
+    This accessor is quite slow. It checks the vector indices on
     every access.
 
     @bug This is not a complete accessor, only write operations are supported.

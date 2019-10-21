@@ -160,7 +160,7 @@ filterHalfWidth(const unsigned int levels)
  *  sr1 <= sr0 + srp
  *  scp[x] <= 4*(sr1 + 6*sr0 + srp + current)
  *
- *  Updates when visting (odd x, odd y) source pixel:
+ *  Updates when visiting (odd x, odd y) source pixel:
  *  srp <= 4*current
  */
 template <typename SKIPSMImagePixelType, typename SKIPSMAlphaPixelType,
@@ -1421,7 +1421,7 @@ expand(bool add, bool wraparound,
 
 // Functor that adds two values and de-promotes the result.
 // Used when collapsing a laplacian pyramid.
-// Explict fromPromote necessary to avoid overflow/underflow problems.
+// Explicit fromPromote necessary to avoid overflow/underflow problems.
 template<typename T1, typename T2, typename T3>
 struct FromPromotePlusFunctorWrapper :
     public std::binary_function<T1, T2, T3>

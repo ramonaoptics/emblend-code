@@ -806,7 +806,7 @@ process_options(int argc, char** argv)
         {"gpu", no_argument, 0, UseGpuId},
         {"no-gpu", no_argument, 0, NoUseGpuId},
         {"prefer-gpu", required_argument, 0, PreferGpuId},
-        {"preferred-gpu", required_argument, 0, PreferGpuId}, // gramatically close alternative form
+        {"preferred-gpu", required_argument, 0, PreferGpuId}, // grammatically close alternative form
         {"pre-assemble", no_argument, 0, PreAssembleId},
         {"preassemble", no_argument, 0, PreAssembleId}, // dash-less form: not documented, not deprecated
         {"no-pre-assemble", no_argument, 0, NoPreAssembleId},
@@ -2133,7 +2133,7 @@ int main(int argc, char** argv)
     if (!StopAfterMaskGeneration) {
         OutputIsValid = false;
 
-        // Make sure that inputUnion is at least as big as given by the -f paramater.
+        // Make sure that inputUnion is at least as big as given by the -f parameter.
         if (OutputSizeGiven) {
             inputUnion |= vigra::Rect2D(OutputOffsetXCmdLine,
                                         OutputOffsetYCmdLine,
@@ -2395,7 +2395,7 @@ int main(int argc, char** argv)
         exit(1);
     } catch (vigra::StdException& e) {
         std::cerr << std::endl
-                  << command << ": an exception occured\n"
+                  << command << ": an exception occurred\n"
                   << command << ": " << e.what()
                   << std::endl;
         exit(1);
