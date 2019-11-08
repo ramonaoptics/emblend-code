@@ -34,7 +34,7 @@
 #include <optional.hpp>
 #endif
 
-#if __cplusplus < 201500L
+#if __cplusplus < 201500L && (!defined _MSC_VER || _MSC_VER<1916)
 namespace std
 {
     template <typename t> using optional = ::std::experimental::optional<t>;
