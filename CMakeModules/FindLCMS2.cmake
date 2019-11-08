@@ -26,7 +26,7 @@ ELSE(NOT WIN32)
     include(FindLibraryWithDebug)
     find_library_with_debug(LCMS2_LIBRARIES
       WIN32_DEBUG_POSTFIX d    
-      NAMES lcms2 lcms2_static
+      NAMES lcms2 lcms2_static lcms
       PATHS ${LCMS2_ROOT_DIR}/Lib/MS
     )
     
