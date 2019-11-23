@@ -63,36 +63,6 @@
 #define UNUSEDVAR __attribute__((unused))
 #endif
 
-
-#ifndef HAVE_AS_CONST
-namespace std
-{
-    // Available in C++17
-    // See for example: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0007r0.html
-
-    template <typename t>
-    inline static
-    const t&
-    as_const(const t& x) noexcept
-    {
-        return x;
-    }
-
-    template <typename t>
-    inline static
-    const t
-#if (defined _MSC_VER) && (_MSC_VER <= 1800)
-    as_const(t&& x)
-#else
-    as_const(t&& x) noexcept(noexcept(t(x)))
-#endif
-    {
-        return x;
-    }
-}
-#endif
-
-
 namespace cl
 {
     // forward declarations
