@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2004-2009 Andrew Mihal
- * Copyright (C) 2009-2017 Christoph Spiel
+ * Copyright (C) 2009-2019 Christoph Spiel
  *
  * This file is part of Enblend.
  *
@@ -48,6 +48,7 @@
 #include <iostream>
 #include <list>
 #include <memory>               // std::unique_ptr
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -86,7 +87,6 @@ extern "C" int optind;
 #include "exposure_weight.h"
 #include "global.h"
 #include "layer_selection.h"
-#include "optional_transitional.hpp"
 #include "parameter.h"
 #include "selector.h"
 #include "self_test.h"

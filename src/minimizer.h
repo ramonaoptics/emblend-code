@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Dr. Christoph L. Spiel
+ * Copyright (C) 2012-2019 Dr. Christoph L. Spiel
  *
  * This file is part of Enblend.
  *
@@ -26,6 +26,7 @@
 #include <config.h>
 #endif
 
+#include <optional>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -33,8 +34,6 @@
 #include <gsl/gsl_min.h>
 #include <gsl/gsl_multimin.h>
 #include <gsl/gsl_vector.h>
-
-#include "optional_transitional.hpp"
 
 
 class Minimizer

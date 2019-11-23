@@ -279,8 +279,6 @@ AC_HEADER_STDC
 
 AC_CHECK_HEADERS([fenv.h limits.h stdlib.h string.h unistd.h])
 
-AC_CHECK_HEADERS([optional optional.hpp boost/optional.hpp], break)
-
 AC_CHECK_HEADER(sys/times.h,
                 [AC_DEFINE([HAVE_SYS_TIMES_H], [1], [Define if <sys/times.h> exists.])])
 AC_CHECK_HEADER(tiffio.h, [],
