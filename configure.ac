@@ -46,8 +46,8 @@ AS_IF([test "$enable_on_demand_dynamic_linking" = no],
           AC_MSG_CHECKING([for on-demand dynamic linking])
           save_ldflags="$LDFLAGS"
           LDFLAGS="-Wl,--as-needed -Wl,--no-copy-dt-needed-entries ${LDFLAGS}"
-          AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <string.h>]],
-                                          [[strlen("foo")]])],
+          AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <cstring>]],
+                                          [[std::strlen("foo")]])],
                          [AC_MSG_RESULT(yes);
                           have_on_demand_dynamic_linking=yes],
                          AC_MSG_RESULT(no))
@@ -59,6 +59,15 @@ fi
 
 
 # Checks for libraries.
+
+STDCXX_FILESYSTEM_LIBRARY='-lstdc++fs'
+AC_MSG_CHECKING([whether we must link with an extra library to get C++17 filesystem support])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <filesystem>]],
+                                [[std::filesystem::path p;
+                                  p.parent_path()]])],
+               [AC_MSG_RESULT(no)],
+               [AC_MSG_RESULT(yes)
+                LIBS="$LIBS $STDCXX_FILESYSTEM_LIBRARY"])
 
 # We check for TCMalloc so early to make it the last user library on
 # the linker command line.  It will then gobble all undefined
