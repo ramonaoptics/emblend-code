@@ -77,21 +77,6 @@ ${CMAKE_FUNCTION_EXISTS}
 /* Define to 1 if strerror_r returns char *. */
 #cmakedefine STRERROR_R_CHAR_P 1
 
-/* Define to 1 if std::as_const (C++ 17) is available */
-#cmakedefine HAVE_AS_CONST 1
-
-/* Define to 1 if <filesystem> is available */
-#cmakedefine HAVE_STD_FILESYSTEM 1
-
-/* Define to 1 if <optional> is available */
-#cmakedefine HAVE_OPTIONAL 1
-
-/* Define to 1 if <optional.hpp> is available */
-#cmakedefine HAVE_OPTIONAL_HPP 1
-
-/* Define to 1 if <boost/optional.hpp> should be used */
-#cmakedefine HAVE_BOOST_OPTIONAL_HPP 1
-
 /* Version number of package */
 #define VERSION "${ENBLEND_VERSION_ONLY}"
 

@@ -122,22 +122,13 @@ ELSE(NOT WIN32)
   SET(ENABLE_DMALLOC_FUNC_CHECK OFF CACHE INTERNAL "")
 ENDIF(NOT WIN32)
 
-IF(MSVC)
-  # Check CXX17 compiler
-  # MSVC needs c++17 switch for some constructs
-  SET(CMAKE_CXX_STANDARD 17)
-  SET(CMAKE_CXX_STANDARD_REQUIRED ON)
-  # MSVC 2017 has removed some deprecated functions with C++17
-  # but there are still used by vigra, so bring they back for now
-  IF(MSVC_VERSION GREATER 1900)
-     ADD_DEFINITIONS(-D_HAS_AUTO_PTR_ETC=1)
-  ENDIF()
-ELSE()
-  # other compiler e.g. gcc complain about some constructs 
-  # in depended libs when compiled with C++17
-  # so for now keep at C++11
-  SET(CMAKE_CXX_STANDARD 11)
-  SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+# we need a C++17 compliant compiler
+SET(CMAKE_CXX_STANDARD 17)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+# MSVC 2017 has removed some deprecated functions with C++17
+# but there are still used by vigra, so bring they back for now
+IF(MSVC_VERSION GREATER 1900)
+  ADD_DEFINITIONS(-D_HAS_AUTO_PTR_ETC=1)
 ENDIF()
 
 IF(CMAKE_COMPILER_IS_GNUCXX)
@@ -200,6 +191,7 @@ ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 # Required Libraries first
 FIND_PACKAGE(LCMS2 REQUIRED)
 ADD_DEFINITIONS(-DHAVE_LIBLCMS2)
+ADD_DEFINITIONS(-DCMS_NO_REGISTER_KEYWORD)
 FIND_PACKAGE(TIFF REQUIRED)
 FIND_PACKAGE(Perl REQUIRED)
 # this one is needed in doc. (Especially the program "convert")
@@ -208,6 +200,10 @@ include_directories(${GSL_INCLUDE_DIR})
 ADD_DEFINITIONS(-DHAVE_LIBGSL)
 ADD_DEFINITIONS(-DHAVE_LIBGSLCBLAS)
 LIST(APPEND common_libs ${LCMS2_LIBRARIES} ${TIFF_LIBRARIES} ${GSL_LIBRARIES})
+IF(CMAKE_COMPILER_IS_GNUCXX)
+# gnu c++ requires -lstdc++fs for C++17 <filesystem> support
+LIST(APPEND common_libs stdc++fs)
+ENDIF()
 include_directories(${TIFF_INCLUDE_DIR} ${LCMS2_INCLUDE_DIR})
 
 # Platform specifics required libraries
@@ -216,41 +212,8 @@ IF(WIN32)
   INCLUDE_DIRECTORIES(${TOP_SRC_DIR}/src/win32helpers)
 ENDIF(WIN32)
 
-# search for optional header
-INCLUDE(CheckIncludeFileCXX)
-CHECK_INCLUDE_FILE_CXX(optional HAVE_OPTIONAL)
-IF(HAVE_OPTIONAL)
-  MESSAGE(STATUS "Using <optional> from compiler suite")
-ELSE()
-  FIND_PACKAGE(Optional)
-  IF(OPTIONAL_FOUND)
-    MESSAGE(STATUS "Optional header found")
-    SET(HAVE_OPTIONAL_HPP 1)
-    INCLUDE_DIRECTORIES(${OPTIONAL_INCLUDE_DIR})
-  ELSE()
-    MESSAGE(STATUS "No optional headers found, fall back to boost")
-    # search for boost
-    if(WIN32)
-      SET(Boost_USE_STATIC_LIBS ON)
-      IF( NOT Boost_root_suffix )
-        SET( Boost_root_suffix _1_51_0 CACHE STRING "suffix of boost root dir." FORCE )
-      ENDIF( NOT Boost_root_suffix )
-      SET(Boost_USE_STATIC_LIBS ON)
-      if (NOT BOOST_ROOT AND NOT $ENV{BOOST_ROOT} STREQUAL "")
-        set(BOOST_ROOT $ENV{BOOST_ROOT})
-      else(NOT BOOST_ROOT AND NOT $ENV{BOOST_ROOT} STREQUAL "")
-        set(BOOST_ROOT ${SOURCE_BASE_DIR}/boost${Boost_root_suffix})
-      endif(NOT BOOST_ROOT AND NOT $ENV{BOOST_ROOT} STREQUAL "")
-    endif()
-    FIND_PACKAGE(Boost 1.55 REQUIRED)
-    SET(HAVE_BOOST_OPTIONAL_HPP 1)
-  ENDIF()
-ENDIF()
-
 #check some header and functions
 include(ConfigureChecks.cmake)
-
-include_directories(${Boost_INCLUDE_DIR})
 
 # Optional Libraries
 FIND_PACKAGE(ZLIB)

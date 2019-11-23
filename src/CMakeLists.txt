@@ -120,7 +120,6 @@ list(APPEND additional_libs dynamic_loader)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-message(STATUS "Boost_FOUND = ${Boost_FOUND}")
 message(STATUS "OpenMP_CXX_FLAGS = ${OpenMP_CXX_FLAGS}")
 
 add_executable(enblend ${ENBLEND_SOURCES})
