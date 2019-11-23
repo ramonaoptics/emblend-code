@@ -40,13 +40,7 @@ Unreleased.  Current line of development.
 
 ** Package Maintainer Stuff
 
-- Boost header <boost/optional.hpp> is not a mandatory header file
-  anymore.  If the C++ standard library already supports C++17
-  <optional> it will be preferred by configure(1).  A working
-  standalone implementation of a C++11-compatiblle <optional> can be
-  found at
-          https://github.com/akrzemi1/Optional
-  where only "optional.hpp" is needed.
+- All Boost dependencies have been scrapped.
 
 - The environment variable SOURCE_DATE_EPOCH overrides the build
   timestamp as recorded by the signatures.  See

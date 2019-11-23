@@ -302,9 +302,6 @@ AC_LANG_PUSH([C++])
 AC_CHECK_HEADER(vigra/basicimage.hxx, [],
                 AC_MSG_ERROR([Vigra "basicimage.hxx" header file is required to compile Enblend.]))
 
-AX_BOOST_BASE([1.55], [],
-              AC_MSG_ERROR([Boost version 1.55 or later is required to compile Enblend.]))
-
 AC_CHECK_HEADER(gsl/gsl_errno.h, [],
                 AC_MSG_ERROR([GNU Scientific Library (GSL) header file "gsl_errno" is required to compile Enblend.]))
 AC_CHECK_HEADER(gsl/gsl_min.h, [],

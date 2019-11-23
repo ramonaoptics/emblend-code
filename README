@@ -1,5 +1,5 @@
 Copyright (C) 2004-2009 Andrew Mihal.
-Copyright (C) 2009-2017 Christoph Spiel.
+Copyright (C) 2009-2019 Christoph Spiel.
 
 This file is part of Enblend.
 
@@ -522,13 +522,13 @@ This README only describes the MacPorts way.
 
 From the command line:
 
-    $ sudo port install make lcms boost jpeg tiff libpng OpenEXR mercurial
+    $ sudo port install make lcms jpeg tiff libpng OpenEXR mercurial
 
 Note that Enblend/Enfuse can be build via AutoConf/AutoMake and via
 CMake.  The latter is experimental.  If you want to build via CMake,
 add "cmake" to the previous command line after "mercurial" like this:
 
-    $ sudo port install make lcms boost jpeg tiff libpng OpenEXR mercurial cmake
+    $ sudo port install make lcms jpeg tiff libpng OpenEXR mercurial cmake
 
 
 **** Compile
@@ -607,10 +607,6 @@ libraries used as of March 2016 in square brackets.
 
 Enblend/Enfuse also depend on the following libraries:
 
-- Boost  [1.60 in boost_1_60_0]
-    - Only header files are used by default.
-    - Optionally, Enblend/Enfuse can use the Filesystem Library.
-      However, this library needs to compiled against STLport.
 - Little-CMS2  [2.4 in lcm2-2.4]
 
 

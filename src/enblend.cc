@@ -41,7 +41,6 @@
 
 #ifdef __GW32C__
 #undef malloc
-#define BOOST_NO_STDC_NAMESPACE 1
 #endif
 
 #include <algorithm>
