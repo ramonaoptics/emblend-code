@@ -591,7 +591,7 @@ reduce(bool wraparound,
                                                        mask.first, mask.second,
                                                        dest.first, dest.second, dest.third,
                                                        destMask.first, destMask.second, destMask.third);
-};
+}
 
 
 

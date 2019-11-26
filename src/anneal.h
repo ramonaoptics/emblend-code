@@ -612,7 +612,7 @@ protected:
     // Weight factors for the distance of a point from the initial
     // seam line and the total mismatch accumulated along the seam
     // line segment.
-    double distanceWeight;;
+    double distanceWeight;
     double mismatchWeight;
 
     omp::lock cerrLock;

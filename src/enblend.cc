@@ -231,12 +231,10 @@ differenceFunctorOfString(const std::string& aDifferenceFunctorName)
 }
 
 
-#define DUMP_GLOBAL_VARIABLES(...) dump_global_variables(__FILE__, __LINE__, ##__VA_ARGS__)
-void dump_global_variables(const char* file, unsigned line,
-                           std::ostream& out = std::cout)
+void dump_global_variables(std::ostream& out = std::cout)
 {
     out <<
-        "+ " << file << ":" << line << ": state of global variables\n" <<
+        "+ State of global variables\n" <<
         "+ Verbose = " << Verbose << ", option \"--verbose\"\n" <<
         "+ OutputFileName = <" << OutputFileName << ">\n" <<
         "+ OutputMaskFileName = <" << OutputMaskFileName.value_or("<not defined>") << ">\n" <<
@@ -1805,7 +1803,7 @@ int main(int argc, char** argv)
     }
 
     if (parameter::as_boolean("dump-global-variables", false)) {
-        DUMP_GLOBAL_VARIABLES();
+        dump_global_variables();
     }
 
     sig.check();

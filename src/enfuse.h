@@ -1209,7 +1209,7 @@ void enfuseMask(vigra::triple<typename ImageType::const_traverser, typename Imag
                                        [&ef](PixelType x, const MaskValueType& y) {return ef(x) + y;});
 #endif
     }
-};
+}
 
 
 /** Enfuse's main blending loop. Templatized to handle different image types.

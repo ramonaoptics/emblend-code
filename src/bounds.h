@@ -75,7 +75,7 @@ inspectOverlap(SrcImageIterator src1_upperleft, SrcImageIterator src1_lowerright
         return NoOverlap;
     }
 
-};
+}
 
 // Argument object factory version.
 template <typename SrcImageIterator, typename SrcAccessor>
@@ -85,7 +85,7 @@ inspectOverlap(vigra::triple<SrcImageIterator, SrcImageIterator, SrcAccessor> sr
 {
     return inspectOverlap(src1.first, src1.second, src1.third,
                           src2.first, src2.second);
-};
+}
 
 /** Determine the region-of-interest and number of blending levels to use,
  *  given the current mask-bounding-box and intersection-bounding-box.
